@@ -1,0 +1,7 @@
+[package]
+name = "butterfly"
+version = "0.1.0"
+authors = ["Hanna Reitz <hanna@xanclic.moe>"]
+
+[dependencies]
+termsize = "0.1"
