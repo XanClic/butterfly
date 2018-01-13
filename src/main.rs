@@ -32,4 +32,14 @@ fn main() {
         Ok(b)   => b,
         Err(e)  => { println!("Failed to initialize buffer: {}", e); exit(1) }
     };
+
+    while !buffer.should_quit() {
+        if let Err(e) = buffer.handle_input() {
+            buffer.restore_display();
+            println!("Main loop error: {}", e);
+            exit(1);
+        }
+    }
+
+    buffer.restore_display();
 }
