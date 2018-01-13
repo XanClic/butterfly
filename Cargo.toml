@@ -4,4 +4,5 @@ version = "0.1.0"
 authors = ["Hanna Reitz <hanna@xanclic.moe>"]
 
 [dependencies]
+termios = "0.3"
 termsize = "0.1"
