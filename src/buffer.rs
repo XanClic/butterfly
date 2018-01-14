@@ -516,7 +516,7 @@ impl Buffer {
 
         // TODO: Needs something proper.
         match args[0].as_str() {
-            "goto" => self.cmd_goto(args),
+            "g" | "goto" => self.cmd_goto(args),
             "q" | "quit" => self.cmd_quit(args),
 
             _ => Err(format!("Unknown command “{}”", args[0]))
