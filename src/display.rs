@@ -58,7 +58,7 @@ impl Display {
             old_height: height,
 
             need_redraw: false,
-            redraw_acknowledged: true,
+            redraw_acknowledged: false,
         })
     }
 
@@ -121,6 +121,7 @@ impl Display {
         if height != self.old_height {
             if self.redraw_acknowledged {
                 self.need_redraw = false;
+                self.redraw_acknowledged = false;
                 self.old_height = height;
             } else {
                 self.need_redraw = true;
