@@ -25,6 +25,9 @@ pub struct Buffer {
 
     // When set, this will be showed by update_status() until the next input.
     status_info: Option<(String, Color)>,
+
+    // TODO: Proper commands with their own local data?
+    jump_stack: Vec<u64>,
 }
 
 impl Buffer {
@@ -45,6 +48,8 @@ impl Buffer {
 
             command_line: None,
             status_info: None,
+
+            jump_stack: vec![],
         };
 
         if let Err(e) = buf.term_update() {
@@ -571,18 +576,27 @@ impl Buffer {
             }
         }
 
-        match input {
+        if let Err(e) = match input {
+            '\x14' => { // ^T
+                self.cmd_jump_back(vec![String::from("^T")])
+            },
+
             ':' => {
                 self.command_line = Some(String::new());
                 self.update_status()?;
+                Ok(())
             },
 
             'q' => {
-                self.cmd_quit(vec![String::from("q")])?;
+                self.cmd_quit(vec![String::from("q")])
             },
 
             'R' => {
-                self.cmd_replace_mode(vec![String::from("R")])?;
+                self.cmd_replace_mode(vec![String::from("R")])
+            },
+
+            't' => {
+                self.cmd_jump_stack_push(vec![String::from("t")])
             },
 
             '\x1b' => {
@@ -600,31 +614,33 @@ impl Buffer {
                 }
 
                 match escape_sequence.as_str() {
-                    "[A" => self.do_cursor_up()?,
-                    "[B" => self.do_cursor_down()?,
-                    "[C" => self.do_cursor_right()?,
-                    "[D" => self.do_cursor_left()?,
-                    "[F" => self.do_key_end()?,
-                    "[H" => self.do_key_home()?,
+                    "[A" => self.do_cursor_up(),
+                    "[B" => self.do_cursor_down(),
+                    "[C" => self.do_cursor_right(),
+                    "[D" => self.do_cursor_left(),
+                    "[F" => self.do_key_end(),
+                    "[H" => self.do_key_home(),
 
-                    "[5~" => self.do_page_up()?,
-                    "[6~" => self.do_page_down()?,
+                    "[5~" => self.do_page_up(),
+                    "[6~" => self.do_page_down(),
 
                     "[1;5F" => self.cmd_goto(vec![String::from("goto"),
-                                                  String::from("end")])?,
+                                                  String::from("end")]),
                     "[1;5H" => self.cmd_goto(vec![String::from("goto"),
-                                                  String::from("start")])?,
+                                                  String::from("start")]),
 
-                    "" => {
-                        self.cmd_read_mode(vec![String::from("")])?;
-                    },
+                    "" => self.cmd_read_mode(vec![String::from("")]),
 
                     // FIXME: Push the sequence back for further evaulation
-                    _ => (),
+                    _ => Ok(()),
                 }
             },
 
-            _ => ()
+            _ => Ok(())
+        } {
+            self.status_info = Some((format!("Error: {}", e),
+                                     Color::ErrorInfo));
+            self.update_status()?;
         }
 
         Ok(())
@@ -656,6 +672,8 @@ impl Buffer {
             return Err(format!("Usage: {} <address|start|end>", args[0]));
         }
 
+        let old_loc = self.loc;
+
         // Rust is so nice to read
         self.loc =
             match if args[1] == "end" {
@@ -677,6 +695,8 @@ impl Buffer {
             Err(e)  => return Err(format!("{}: {}", args[1], e.description()))
         };
 
+        self.jump_stack.push(old_loc);
+
         let lof = self.file.len()?;
         if self.loc >= lof {
             if lof > 0 {
@@ -689,6 +709,27 @@ impl Buffer {
         self.cursor_to_bounds(true)?;
         self.update()?;
 
+        Ok(())
+    }
+
+    fn cmd_jump_back(&mut self, _: Vec<String>) -> Result<(), String> {
+        self.loc = match self.jump_stack.pop() {
+            Some(loc)   => loc,
+            None        => return Err(String::from("Jump stack empty"))
+        };
+
+        if self.loc >= self.file.len()? {
+            panic!("Invalid jump stack entry");
+        }
+
+        self.cursor_to_bounds(true)?;
+        self.update()?;
+
+        Ok(())
+    }
+
+    fn cmd_jump_stack_push(&mut self, _: Vec<String>) -> Result<(), String> {
+        self.jump_stack.push(self.loc);
         Ok(())
     }
 
