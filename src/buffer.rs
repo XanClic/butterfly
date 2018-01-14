@@ -106,9 +106,9 @@ impl Buffer {
                                    ─\n");
 
         if let Some((ref status_info, ref status_color)) = self.status_info {
-            self.display.color_ref(status_color);
+            self.display.color_on_ref(status_color);
             self.display.write_static(status_info.as_str());
-            self.display.color(Color::Normal);
+            self.display.color_off_ref(status_color);
         } else if let Some(ref cmd_line) = self.command_line {
             self.display.write(format!(":{:<88}", cmd_line));
         } else {
@@ -152,7 +152,7 @@ impl Buffer {
         let active_line = (self.loc & !0xf) == base;
 
         if active_line {
-            self.display.color(Color::ActiveLine);
+            self.display.color_on(Color::ActiveLine);
         }
 
         // Address
@@ -189,7 +189,7 @@ impl Buffer {
             let active_char = active_line && self.command_line.is_none() &&
                               base + (i as u64) == self.loc;
             if active_char {
-                self.display.color(Color::ActiveChar);
+                self.display.color_on(Color::ActiveChar);
             }
 
             if let Some(c) = chr {
@@ -209,12 +209,12 @@ impl Buffer {
             }
 
             if active_char {
-                self.display.color(Color::ActiveLine);
+                self.display.color_off(Color::ActiveChar);
             }
         }
 
         if active_line {
-            self.display.color(Color::Normal);
+            self.display.color_off(Color::ActiveLine);
         }
 
         Ok(())
