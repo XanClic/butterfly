@@ -158,9 +158,9 @@ impl Buffer {
         // Character data
         for i in 0..16 {
             let chr = if base + (i as u64) < end_offset {
-                self.buffer[buffer_base + i]
+                Some(self.buffer[buffer_base + i])
             } else {
-                ' ' as u8
+                None
             };
 
             let active_char = active_line && base + (i as u64) == self.loc;
@@ -168,10 +168,20 @@ impl Buffer {
                 self.display.color(Color::ActiveChar);
             }
 
-            if chr < 0x20 || chr > 0x7e {
-                self.display.write_static(".");
+            if let Some(c) = chr {
+                if c == 0x00 {
+                    self.display.write_static(" ");
+                } else if c == 0x0a {
+                    self.display.write_static("¶");
+                } else if c == 0x20 {
+                    self.display.write_static("␣");
+                } else if c < 0x20 || c > 0x7e {
+                    self.display.write_static("·");
+                } else {
+                    self.display.write((c as char).to_string());
+                }
             } else {
-                self.display.write((chr as char).to_string());
+                self.display.write_static(" ");
             }
 
             if active_char {
