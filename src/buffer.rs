@@ -431,7 +431,11 @@ impl Buffer {
 
         self.loc += offset;
         if self.loc >= lof {
-            self.loc = lof - 1;
+            if lof > 0 {
+                self.loc = lof - 1;
+            } else {
+                self.loc = 0;
+            }
         }
 
         self.base_offset += offset;
@@ -445,6 +449,33 @@ impl Buffer {
         }
 
         self.update()?;
+        Ok(())
+    }
+
+    fn do_key_end(&mut self) -> Result<(), String> {
+        let lof = self.file.len()?;
+        self.replacing_nibble = 0;
+
+        self.loc = (self.loc & !0xf) + 0xf;
+        if self.loc >= lof {
+            if lof > 0 {
+                self.loc = lof - 1;
+            } else {
+                self.loc = 0;
+            }
+        }
+
+        self.update_status()?;
+        self.update_cursor()?;
+        Ok(())
+    }
+
+    fn do_key_home(&mut self) -> Result<(), String> {
+        self.replacing_nibble = 0;
+        self.loc &= !0xf;
+
+        self.update_status()?;
+        self.update_cursor()?;
         Ok(())
     }
 
@@ -528,11 +559,11 @@ impl Buffer {
                             break;
                         }
                     } else if seq.len() == 2 {
-                        match seq[1] as char {
-                            'A' | 'B' | 'C' | 'D' => break,
-                            '5' | '6' => (),
-
-                            _ => break
+                        if seq[1] >= 'A' as u8 && seq[1] <= 'Z' as u8 {
+                            break;
+                        } else if seq[1] >= '0' as u8 && seq[1] <= '9' as u8 {
+                        } else {
+                            break;
                         }
                     } else {
                         break;
@@ -544,6 +575,8 @@ impl Buffer {
                     "[B" => self.do_cursor_down()?,
                     "[C" => self.do_cursor_right()?,
                     "[D" => self.do_cursor_left()?,
+                    "[F" => self.do_key_end()?,
+                    "[H" => self.do_key_home()?,
 
                     "[5~" => self.do_page_up()?,
                     "[6~" => self.do_page_down()?,
