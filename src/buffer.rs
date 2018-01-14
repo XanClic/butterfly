@@ -331,6 +331,7 @@ impl Buffer {
             self.loc -= 16;
         }
 
+        self.update_status()?;
         self.update_cursor()?;
         Ok(())
     }
@@ -346,6 +347,7 @@ impl Buffer {
             self.loc += 16;
         }
 
+        self.update_status()?;
         self.update_cursor()?;
         Ok(())
     }
