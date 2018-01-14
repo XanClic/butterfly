@@ -577,12 +577,16 @@ impl Buffer {
 
     fn cmd_goto(&mut self, args: Vec<String>) -> Result<(), String> {
         if args.len() != 2 {
-            return Err(format!("Usage: {} <address>", args[0]));
+            return Err(format!("Usage: {} <address|start|end>", args[0]));
         }
 
         // Rust is so nice to read
         self.loc =
-            match if args[1].starts_with("0x") {
+            match if args[1] == "end" {
+                    Ok(0xffffffffffffffffu64)
+                } else if args[1] == "start" || args[1] == "begin" {
+                    Ok(0u64)
+                } else if args[1].starts_with("0x") {
                     u64::from_str_radix(&args[1][2..], 16)
                 } else if args[1].starts_with("0b") {
                     // nice gimmmick
