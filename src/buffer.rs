@@ -19,6 +19,8 @@ pub struct Buffer {
     replacing_nibble: u8, // TODO: Can this be done better?
 
     quit_request: bool,
+
+    command_line: Option<String>,
 }
 
 impl Buffer {
@@ -36,6 +38,8 @@ impl Buffer {
             replacing_nibble: 0,
 
             quit_request: false,
+
+            command_line: None,
         };
 
         if let Err(e) = buf.term_update() {
@@ -88,18 +92,24 @@ impl Buffer {
     }
 
     fn update_status(&mut self) -> Result<(), String> {
-        let y = self.display.h() - 2;
+        let height = self.display.h();
+        let y = if height >= 2 { height - 2 } else { 0 };
+
         self.display.set_cursor_pos(0, y as usize);
         self.display.write_static("────────────────────────────────────────────\
                                    ────────────────────────────────────────────\
                                    ─\n");
 
-        let mode_str = match self.mode {
-            Mode::Read      => "READ",
-            Mode::Replace   => "REPLACE",
-        };
-        self.display.write(format!(" {:>15}{:55}{:>#18x}",
-                                   mode_str, "", self.loc));
+        if let Some(ref cmd_line) = self.command_line {
+            self.display.write(format!(":{:<88}", cmd_line));
+        } else {
+            let mode_str = match self.mode {
+                Mode::Read      => "READ",
+                Mode::Replace   => "REPLACE",
+            };
+            self.display.write(format!(" {:>15}{:55}{:>#18x}",
+                                       mode_str, "", self.loc));
+        }
 
         self.update_cursor()?;
         Ok(())
@@ -165,7 +175,10 @@ impl Buffer {
                 None
             };
 
-            let active_char = active_line && base + (i as u64) == self.loc;
+            // Only draw cursor here if the real cursor is actually in the hex
+            // column (which it is not when entering a command)
+            let active_char = active_line && self.command_line.is_none() &&
+                              base + (i as u64) == self.loc;
             if active_char {
                 self.display.color(Color::ActiveChar);
             }
@@ -226,10 +239,18 @@ impl Buffer {
 
         self.old_loc = loc;
 
-        let x = Self::byte_to_x((loc % 16) as u8) + self.replacing_nibble;
-        let y = (loc - self.base_offset) / 16;
+        let x: usize;
+        let y: usize;
 
-        self.display.set_cursor_pos((x + 19) as usize, y as usize);
+        if let Some(ref cmd_line) = self.command_line {
+            x = cmd_line.len() + 1;
+            y = self.display.h() as usize - 1;
+        } else {
+            x = (Self::byte_to_x((loc % 16) as u8) + self.replacing_nibble)
+                as usize + 19;
+            y = ((loc - self.base_offset) / 16) as usize;
+        }
+        self.display.set_cursor_pos(x, y);
         self.display.flush();
         Ok(())
     }
@@ -371,8 +392,28 @@ impl Buffer {
             None    => { self.quit_request = true; return Ok(()) }
         };
 
+        if let Some(mut cmd_line) = self.command_line.take() {
+            if input == '\n' {
+                self.execute_cmdline(cmd_line)?;
+                self.update_status()?;
+                return Ok(());
+            }
+
+            cmd_line.push(input);
+            self.command_line = Some(cmd_line);
+            self.update_status()?;
+            return Ok(());
+        }
+
         match input {
-            'q' => self.quit_request = true,
+            ':' => {
+                self.command_line = Some(String::new());
+                self.update_status()?;
+            },
+
+            'q' => {
+                self.cmd_quit(vec![String::from("q")])?;
+            },
 
             '\x1b' => {
                 let mut escape_sequence = String::new();
@@ -419,6 +460,31 @@ impl Buffer {
             _ => ()
         }
 
+        Ok(())
+    }
+
+    fn execute_cmdline(&mut self, cmdline: String) -> Result<(), String> {
+        let mut args = vec![];
+        for arg in cmdline.split(' ') {
+            if !arg.is_empty() {
+                args.push(String::from(arg));
+            }
+        }
+
+        if args.is_empty() {
+            return Ok(());
+        }
+
+        // TODO: Needs something proper.
+        match args[0].as_str() {
+            "q" | "quit" => self.cmd_quit(args),
+
+            _ => Err(format!("Unknown command “{}”", args[0]))
+        }
+    }
+
+    fn cmd_quit(&mut self, _: Vec<String>) -> Result<(), String> {
+        self.quit_request = true;
         Ok(())
     }
 }
