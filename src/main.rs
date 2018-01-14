@@ -24,7 +24,7 @@ fn main() {
 
     let file = match File::new(argv[1].clone()) {
         Ok(f)   => f,
-        Err(e)  => { eprintln!("Failed to file: {}", e); exit(1) }
+        Err(e)  => { eprintln!("Failed to open: {}", e); exit(1) }
     };
 
     let display = match Display::new() {
