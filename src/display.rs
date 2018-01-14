@@ -38,7 +38,7 @@ impl Display {
         use self::termios::*;
 
         let istream = std::io::stdin();
-        let ostream = std::io::stdout();
+        let mut ostream = std::io::stdout();
 
         let initial_tios = match Termios::from_fd(istream.as_raw_fd()) {
             Ok(t)   => t,
@@ -53,6 +53,10 @@ impl Display {
         if let Err(e) = tcsetattr(istream.as_raw_fd(), TCSANOW, &mut tios) {
             return Err(format!("Failed to set terminal attributes: {}", e));
         }
+
+        // Announce mouse support
+        ostream.write(b"\x1b[?1002;1006;1015h").unwrap();
+        ostream.flush().unwrap();
 
         let (_, height) = Self::dim();
 
@@ -73,6 +77,9 @@ impl Display {
 
     pub fn restore(&mut self) -> Result<(), String> {
         use self::termios::*;
+
+        self.write_static("\x1b[?1002;1006;1015l");
+        self.flush();
 
         if let Err(e) = tcsetattr(self.istream.as_raw_fd(), TCSANOW,
                                   &mut self.initial_tios)

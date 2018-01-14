@@ -1,10 +1,9 @@
-#[macro_use]
-extern crate bitmask;
-extern crate libc;
-extern crate serde;
-#[macro_use]
-extern crate serde_derive;
-extern crate serde_json;
+#[macro_use] extern crate bitmask;
+             extern crate libc;
+             extern crate regex;
+             extern crate serde;
+#[macro_use] extern crate serde_derive;
+             extern crate serde_json;
 
 use std::env;
 use std::process::exit;

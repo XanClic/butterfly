@@ -1,5 +1,6 @@
 use display::{Color,Display};
 use file::File;
+use regex::Regex;
 use undo_file::UndoFile;
 
 enum Mode {
@@ -34,7 +35,12 @@ pub struct Buffer {
 
     // TODO: Proper commands with their own local data?
     jump_stack: Vec<u64>,
+
+    mouse_input_regex_1006: Regex,
+    mouse_input_regex_1015: Regex,
 }
+
+const SCROLL_OFFSET: u64 = 0x100;
 
 impl Buffer {
     pub fn new(display: Display, file: File, undo_file: UndoFile)
@@ -62,6 +68,11 @@ impl Buffer {
             status_info: None,
 
             jump_stack: vec![],
+
+            mouse_input_regex_1006:
+                Regex::new(r"^\[<([0-9]+);([0-9]+);([0-9]+)([mM])$").unwrap(),
+            mouse_input_regex_1015:
+                Regex::new(r"^\[([0-9]+);([0-9]+);([0-9]+)M$").unwrap(),
         };
 
         if let Err(e) = buf.term_update() {
@@ -263,6 +274,25 @@ impl Buffer {
             byte * 3 + 1
         } else {
             byte * 3
+        }
+    }
+
+    fn x_to_byte(x: u8) -> Option<u8> {
+        let byte3 =
+            if x >= 40 {
+                x - 4
+            } else if x >= 27 {
+                x - 3
+            } else if x >= 13 {
+                x - 1
+            } else {
+                x
+            };
+
+        if byte3 >= 48 {
+            None
+        } else {
+            Some(byte3 / 3)
         }
     }
 
@@ -470,6 +500,52 @@ impl Buffer {
         Ok(())
     }
 
+    fn do_scroll_up(&mut self) -> Result<(), String> {
+        if self.base_offset < SCROLL_OFFSET {
+            self.base_offset = 0;
+        } else {
+            self.base_offset -= SCROLL_OFFSET;
+        }
+
+        // TODO (maybe in other places, too): self.loc is out of bounds on
+        //      error.  Bad?
+        let end_offset = self.end_offset()?;
+        if self.loc >= end_offset {
+            // We did not move self.loc, so end_offset must be the screen's end
+            assert!(end_offset % 0x10 == 0);
+            self.loc = end_offset - 0x10 + self.loc % 0x10;
+        }
+
+        self.update()?;
+        Ok(())
+    }
+
+    fn do_scroll_down(&mut self) -> Result<(), String> {
+        let height = self.display.h();
+        if height <= 2 {
+            return Ok(());
+        }
+
+        let disp_size = (height as u64 - 2) * 16;
+        let disp_end = self.base_offset + disp_size;
+        let file_end = self.file.len()?;
+
+        if disp_end >= file_end {
+            return Ok(());
+        } else if disp_end + SCROLL_OFFSET >= file_end {
+            self.base_offset = ((file_end + 0xf) & !0xf) - disp_size;
+        } else {
+            self.base_offset += SCROLL_OFFSET;
+        }
+
+        if self.loc < self.base_offset {
+            self.loc = self.base_offset + self.loc % 0x10;
+        }
+
+        self.update()?;
+        Ok(())
+    }
+
     fn do_key_end(&mut self) -> Result<(), String> {
         let lof = self.file.len()?;
         self.replacing_nibble = 0;
@@ -647,27 +723,7 @@ impl Buffer {
                     escape_sequence.push(input);
                 }
 
-                match escape_sequence.as_str() {
-                    "[A" => self.do_cursor_up(),
-                    "[B" => self.do_cursor_down(),
-                    "[C" => self.do_cursor_right(),
-                    "[D" => self.do_cursor_left(),
-                    "[F" => self.do_key_end(),
-                    "[H" => self.do_key_home(),
-
-                    "[5~" => self.do_page_up(),
-                    "[6~" => self.do_page_down(),
-
-                    "[1;5F" => self.cmd_goto(vec![String::from("goto"),
-                                                  String::from("end")]),
-                    "[1;5H" => self.cmd_goto(vec![String::from("goto"),
-                                                  String::from("start")]),
-
-                    "" => self.cmd_read_mode(vec![String::from("")]),
-
-                    // FIXME: Push the sequence back for further evaulation
-                    _ => Ok(()),
-                }
+                self.handle_escape_sequence(&escape_sequence)
             },
 
             _ => Ok(())
@@ -698,6 +754,134 @@ impl Buffer {
         }
 
         Ok(())
+    }
+
+    fn handle_mouse(&mut self, seq: &String) -> Result<bool, String> {
+        let match_type;
+        let mut button;
+        let mut x;
+        let mut y;
+
+        {
+            let regex;
+            if self.mouse_input_regex_1006.is_match(seq.as_str()) {
+                regex = &self.mouse_input_regex_1006;
+                match_type = 1006;
+            } else if self.mouse_input_regex_1015.is_match(seq.as_str()) {
+                regex = &self.mouse_input_regex_1015;
+                match_type = 1015;
+            } else {
+                return Ok(false);
+            }
+
+            let m = regex.captures(seq.as_str()).unwrap();
+
+            button = match m[1].parse::<u32>() {
+                Ok(v)   => v,
+                Err(e)  => return Err(format!("Mouse input: {}: {}: {}",
+                                              seq, &m[1], e))
+            };
+
+            x = match m[2].parse::<u32>() {
+                Ok(v)   => v,
+                Err(e)  => return Err(format!("Mouse input: {}: {}: {}",
+                                              seq, &m[2], e))
+            };
+
+            y = match m[3].parse::<u32>() {
+                Ok(v)   => v,
+                Err(e)  => return Err(format!("Mouse input: {}: {}: {}",
+                                              seq, &m[3], e))
+            };
+
+            if match_type == 1006 {
+                if &m[4] == "m" {
+                    // Button up; ignore anything non-button-down for now
+                    return Ok(true);
+                }
+            } else {
+                button -= 32;
+
+                if button == 3 {
+                    // Button up; ignore anything non-button-down for now
+                    return Ok(true);
+                }
+            }
+        }
+
+        if button == 64 {
+            self.do_scroll_up()?;
+            return Ok(true);
+        } else if button == 65 {
+            self.do_scroll_down()?;
+            return Ok(true);
+        }
+
+        if button >= 32 {
+            // Movement; just interpret this as a new click
+            button -= 32;
+        }
+
+        if button != 0 {
+            // Ignore anything but the left button
+            return Ok(true);
+        }
+
+        x -= 1;
+        y -= 1;
+
+        // FIXME: Hard-coding these things is not too nice
+        let height = self.display.h();
+        if height < 2 || y >= self.display.h() - 2 {
+            return Ok(true);
+        }
+
+        if x < 19 || x > 89 {
+            return Ok(true);
+        }
+
+        let byte =
+            if let Some(hexbyte) = Self::x_to_byte((x - 19) as u8) {
+                hexbyte
+            } else if x >= 74 {
+                (x - 74) as u8
+            } else {
+                return Ok(true);
+            };
+
+        self.loc = self.base_offset + y as u64 * 16 + byte as u64;
+        self.update_cursor()?;
+        self.update_status()?;
+
+        Ok(true)
+    }
+
+    fn handle_escape_sequence(&mut self, seq: &String) -> Result<(), String> {
+        if self.handle_mouse(seq)? {
+            return Ok(());
+        }
+
+        match seq.as_str() {
+            "[A" => self.do_cursor_up(),
+            "[B" => self.do_cursor_down(),
+            "[C" => self.do_cursor_right(),
+            "[D" => self.do_cursor_left(),
+            "[F" => self.do_key_end(),
+            "[H" => self.do_key_home(),
+
+            "[5~" => self.do_page_up(),
+            "[6~" => self.do_page_down(),
+
+            "[1;5F" => self.cmd_goto(vec![String::from("goto"),
+                                          String::from("end")]),
+            "[1;5H" => self.cmd_goto(vec![String::from("goto"),
+                                          String::from("start")]),
+
+            "" => self.cmd_read_mode(vec![String::from("")]),
+
+            // FIXME: Push the sequence back for further evaulation
+            _ => Ok(()),
+        }
     }
 
     fn execute_cmdline(&mut self, cmdline: String) -> Result<(), String> {
