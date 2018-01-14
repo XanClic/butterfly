@@ -710,20 +710,25 @@ impl Buffer {
             },
 
             '\x1b' => {
-                let mut escape_sequence = String::with_capacity(32);
+                let mut escape_sequence = String::with_capacity(256);
 
                 // FIXME: This is a very arbitrary max length.
                 //        Also, we need proper terminfo support.
-                while escape_sequence.len() < 32 {
+                while escape_sequence.len() < 256 {
                     let input = match self.display.readchar_nonblock()? {
                         Some(c) => c,
                         None    => break
                     };
 
+                    if input == '\x1b' {
+                        self.display.unreadchar(input);
+                        break;
+                    }
+
                     escape_sequence.push(input);
                 }
 
-                self.handle_escape_sequence(&escape_sequence)
+                self.handle_escape_sequence(escape_sequence)
             },
 
             _ => Ok(())
@@ -856,32 +861,46 @@ impl Buffer {
         Ok(true)
     }
 
-    fn handle_escape_sequence(&mut self, seq: &String) -> Result<(), String> {
-        if self.handle_mouse(seq)? {
+    fn handle_escape_sequence(&mut self, mut seq: String) -> Result<(), String> {
+        if self.handle_mouse(&seq)? {
             return Ok(());
         }
 
-        match seq.as_str() {
-            "[A" => self.do_cursor_up(),
-            "[B" => self.do_cursor_down(),
-            "[C" => self.do_cursor_right(),
-            "[D" => self.do_cursor_left(),
-            "[F" => self.do_key_end(),
-            "[H" => self.do_key_home(),
+        let ret =
+            if seq.starts_with("[A") {
+                seq = seq.split_off(2); self.do_cursor_up()
+            } else if seq.starts_with("[B") {
+                seq = seq.split_off(2); self.do_cursor_down()
+            } else if seq.starts_with("[C") {
+                seq = seq.split_off(2); self.do_cursor_right()
+            } else if seq.starts_with("[D") {
+                seq = seq.split_off(2); self.do_cursor_left()
+            } else if seq.starts_with("[F") {
+                seq = seq.split_off(2); self.do_key_end()
+            } else if seq.starts_with("[H") {
+                seq = seq.split_off(2); self.do_key_home()
+            } else if seq.starts_with("[5~") {
+                seq = seq.split_off(3); self.do_page_up()
+            } else if seq.starts_with("[6~") {
+                seq = seq.split_off(3); self.do_page_down()
+            } else if seq.starts_with("[1;5F") {
+                seq = seq.split_off(5); self.do_goto(0xffffffffffffffffu64)
+            } else if seq.starts_with("[1;5H") {
+                seq = seq.split_off(5); self.do_goto(0)
+            } else if seq.is_empty() {
+                self.cmd_read_mode(vec![String::from("")])
+            } else {
+                // Return immediately, do not try to push some suffix back
+                return Ok(());
+            };
 
-            "[5~" => self.do_page_up(),
-            "[6~" => self.do_page_down(),
-
-            "[1;5F" => self.cmd_goto(vec![String::from("goto"),
-                                          String::from("end")]),
-            "[1;5H" => self.cmd_goto(vec![String::from("goto"),
-                                          String::from("start")]),
-
-            "" => self.cmd_read_mode(vec![String::from("")]),
-
-            // FIXME: Push the sequence back for further evaulation
-            _ => Ok(()),
+        if !seq.is_empty() {
+            for c in seq.chars() {
+                self.display.unreadchar(c);
+            }
         }
+
+        ret
     }
 
     fn execute_cmdline(&mut self, cmdline: String) -> Result<(), String> {

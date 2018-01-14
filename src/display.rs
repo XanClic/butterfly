@@ -2,6 +2,7 @@ extern crate termios;
 extern crate termsize;
 
 use std;
+use std::collections::VecDeque;
 use std::io::{Read,Write};
 use std::os::unix::io::AsRawFd;
 
@@ -19,6 +20,8 @@ pub struct Display {
     redraw_acknowledged: bool,
 
     mode: ColorMode,
+
+    fifo: VecDeque<char>,
 }
 
 bitmask! {
@@ -74,6 +77,8 @@ impl Display {
             redraw_acknowledged: false,
 
             mode: ColorMode::none(),
+
+            fifo: VecDeque::<char>::new(),
         })
     }
 
@@ -109,6 +114,10 @@ impl Display {
     }
 
     pub fn readchar(&mut self) -> Result<Option<char>, String> {
+        if let Some(x) = self.fifo.pop_front() {
+            return Ok(Some(x));
+        }
+
         let mut input: [u8; 1] = [0];
         let ret = match self.istream.read(&mut input) {
             Ok(r)   => r,
@@ -130,6 +139,10 @@ impl Display {
 
     pub fn readchar_nonblock(&mut self) -> Result<Option<char>, String> {
         use self::termios::*;
+
+        if let Some(x) = self.fifo.pop_front() {
+            return Ok(Some(x));
+        }
 
         let mut tios = self.tios.clone();
         tios.c_cc[VMIN] = 0;
