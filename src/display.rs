@@ -23,9 +23,13 @@ pub struct Display {
 
 bitmask! {
     pub mask ColorMode: u64 where flags Color {
-        ActiveLine = (1u64 <<  0),
-        ActiveChar = (1u64 <<  1),
-        ErrorInfo  = (1u64 <<  2),
+        ActiveLine          = (1u64 <<  0),
+        ActiveChar          = (1u64 <<  1),
+        ErrorInfo           = (1u64 <<  2),
+        AddressColumn       = (1u64 <<  3),
+        StatusModeRead      = (1u64 <<  4),
+        StatusModeReplace   = (1u64 <<  5),
+        StatusLoc           = (1u64 <<  6),
     }
 }
 
@@ -151,13 +155,33 @@ impl Display {
         let mut sgr_string = String::from("\x1b[0");
 
         if self.mode.contains(Color::ActiveLine) {
+            // BG color 0
             sgr_string.push_str(";40");
         }
         if self.mode.contains(Color::ErrorInfo) {
+            // Bold, red
             sgr_string.push_str(";1;31")
         }
+        if self.mode.contains(Color::AddressColumn) {
+            // Cyan
+            sgr_string.push_str(";36")
+        }
+        if self.mode.contains(Color::StatusModeRead) {
+            // Bold, green
+            sgr_string.push_str(";1;32")
+        }
+        if self.mode.contains(Color::StatusModeReplace) {
+            // Bold, underline, red
+            sgr_string.push_str(";1;4;31")
+        }
+        if self.mode.contains(Color::StatusLoc) {
+            // Cyan
+            sgr_string.push_str(";36")
+        }
+
         // Should be at the end
         if self.mode.contains(Color::ActiveChar) {
+            // Swap FG and BG
             sgr_string.push_str(";7");
         }
         sgr_string.push('m');

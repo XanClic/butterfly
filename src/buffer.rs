@@ -112,12 +112,25 @@ impl Buffer {
         } else if let Some(ref cmd_line) = self.command_line {
             self.display.write(format!(":{:<88}", cmd_line));
         } else {
-            let mode_str = match self.mode {
-                Mode::Read      => "READ",
-                Mode::Replace   => "REPLACE",
+            let (mode_str, mode_col) = match self.mode {
+                Mode::Read      => ("READ", Color::StatusModeRead),
+                Mode::Replace   => ("REPLACE", Color::StatusModeReplace),
             };
-            self.display.write(format!(" {:>15}{:55}{:>#18x}",
-                                       mode_str, "", self.loc));
+
+            self.display.write(format!("{:width$}", "",
+                                       width = 16 - mode_str.len()));
+            self.display.color_on(mode_col);
+            self.display.write_static(mode_str);
+            self.display.color_off(mode_col);
+
+            self.display.write(format!("{:55}", ""));
+
+            let loc_str = format!("{:#x}", self.loc);
+            self.display.write(format!("{:width$}", "",
+                                       width = 18 - loc_str.len()));
+            self.display.color_on(Color::StatusLoc);
+            self.display.write(loc_str);
+            self.display.color_off(Color::StatusLoc);
         }
 
         self.update_cursor()?;
@@ -156,7 +169,10 @@ impl Buffer {
         }
 
         // Address
-        self.display.write(format!("{:16x} │ ", base));
+        self.display.color_on(Color::AddressColumn);
+        self.display.write(format!("{:16x}", base));
+        self.display.color_off(Color::AddressColumn);
+        self.display.write_static(" │ ");
 
         // Hex data
         for i in 0..16 {
