@@ -23,6 +23,7 @@ pub enum Color {
     Normal,
     ActiveLine,
     ActiveChar,
+    ErrorInfo,
 }
 
 impl Display {
@@ -140,11 +141,16 @@ impl Display {
     }
 
     pub fn color(&mut self, color: Color) {
+        self.color_ref(&color);
+    }
+
+    pub fn color_ref(&mut self, color: &Color) {
         // TODO: Make these customizable
-        let sgr_string = match color {
+        let sgr_string = match *color {
             Color::Normal       => "\x1b[0m",
             Color::ActiveLine   => "\x1b[0;40m",
             Color::ActiveChar   => "\x1b[0;40;7m",
+            Color::ErrorInfo    => "\x1b[0;1;31m",
         };
 
         self.write_static(sgr_string)

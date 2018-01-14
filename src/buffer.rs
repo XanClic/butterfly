@@ -21,6 +21,9 @@ pub struct Buffer {
     quit_request: bool,
 
     command_line: Option<String>,
+
+    // When set, this will be showed by update_status() until the next input.
+    status_info: Option<(String, Color)>,
 }
 
 impl Buffer {
@@ -40,6 +43,7 @@ impl Buffer {
             quit_request: false,
 
             command_line: None,
+            status_info: None,
         };
 
         if let Err(e) = buf.term_update() {
@@ -100,7 +104,11 @@ impl Buffer {
                                    ────────────────────────────────────────────\
                                    ─\n");
 
-        if let Some(ref cmd_line) = self.command_line {
+        if let Some((ref status_info, ref status_color)) = self.status_info {
+            self.display.color_ref(status_color);
+            self.display.write_static(status_info.as_str());
+            self.display.color(Color::Normal);
+        } else if let Some(ref cmd_line) = self.command_line {
             self.display.write(format!(":{:<88}", cmd_line));
         } else {
             let mode_str = match self.mode {
@@ -392,9 +400,14 @@ impl Buffer {
             None    => { self.quit_request = true; return Ok(()) }
         };
 
+        self.status_info = None;
+
         if let Some(mut cmd_line) = self.command_line.take() {
             if input == '\n' {
-                self.execute_cmdline(cmd_line)?;
+                if let Err(e) = self.execute_cmdline(cmd_line) {
+                    self.status_info = Some((format!("Error: {}", e),
+                                             Color::ErrorInfo));
+                }
                 self.update_status()?;
                 return Ok(());
             }
