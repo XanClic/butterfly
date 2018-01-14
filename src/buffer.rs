@@ -88,9 +88,9 @@ impl Buffer {
     fn update_status(&mut self) -> Result<(), String> {
         let y = self.display.h() - 2;
         self.display.set_cursor_pos(0, y as usize);
-        self.display.write_static("————————————————————————————————————————————\
-                                   ————————————————————————————————————————————\
-                                   —\n");
+        self.display.write_static("────────────────────────────────────────────\
+                                   ────────────────────────────────────────────\
+                                   ─\n");
 
         let mode_str = match self.mode {
             Mode::Read      => "READ",
@@ -135,7 +135,7 @@ impl Buffer {
         }
 
         // Address
-        self.display.write(format!("{:16x} | ", base));
+        self.display.write(format!("{:16x} │ ", base));
 
         // Hex data
         for i in 0..16 {
@@ -153,7 +153,7 @@ impl Buffer {
             }
         }
 
-        self.display.write_static("| ");
+        self.display.write_static("│ ");
 
         // Character data
         for i in 0..16 {
