@@ -403,16 +403,32 @@ impl Buffer {
         self.status_info = None;
 
         if let Some(mut cmd_line) = self.command_line.take() {
-            if input == '\n' {
-                if let Err(e) = self.execute_cmdline(cmd_line) {
-                    self.status_info = Some((format!("Error: {}", e),
-                                             Color::ErrorInfo));
+            match input {
+                '\n' => {
+                    if let Err(e) = self.execute_cmdline(cmd_line) {
+                        self.status_info = Some((format!("Error: {}", e),
+                                                 Color::ErrorInfo));
+                    }
+                    self.update_status()?;
+                    return Ok(());
+                },
+
+                // TODO (Whenever this manages to sufficiently annoy me)
+                '\x1b' => {
+                    cmd_line.push('^');
+                    cmd_line.push('[');
+                },
+
+                // Backspace
+                '\x7f' => {
+                    cmd_line.pop();
+                },
+
+                _ => {
+                    cmd_line.push(input);
                 }
-                self.update_status()?;
-                return Ok(());
             }
 
-            cmd_line.push(input);
             self.command_line = Some(cmd_line);
             self.update_status()?;
             return Ok(());
