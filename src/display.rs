@@ -13,19 +13,15 @@ pub struct Display {
 
     initial_tios: termios::Termios,
 
-    /* width: u32, */
-    height: u32,
+    old_height: u32,
+
+    need_redraw: bool, // TODO: Should this be some callback?
+    redraw_acknowledged: bool,
 }
 
 impl Display {
     pub fn new() -> Result<Self, String> {
         use self::termios::*;
-
-        let ts = match termsize::get() {
-            Some(ts) => ts,
-            None     =>
-                return Err(String::from("Failed to inquire terminal size"))
-        };
 
         let istream = std::io::stdin();
         let ostream = std::io::stdout();
@@ -44,14 +40,18 @@ impl Display {
             return Err(String::from(e.description()));
         }
 
+        let (_, height) = Self::dim();
+
         Ok(Display {
             istream: istream,
             ostream: ostream,
 
             initial_tios: initial_tios,
 
-            /* width: ts.cols as u32, */
-            height: ts.rows as u32,
+            old_height: height,
+
+            need_redraw: false,
+            redraw_acknowledged: true,
         })
     }
 
@@ -101,13 +101,35 @@ impl Display {
         self.ostream.flush().unwrap();
     }
 
-    /*
-    pub fn w(&self) -> u32 {
-        self.width
+    fn dim() -> (u32, u32) {
+        match termsize::get() {
+            Some(ts) => (ts.cols as u32, ts.rows as u32),
+            None     => (80, 25)
+        }
     }
-     */
 
-    pub fn h(&self) -> u32 {
-        self.height
+    pub fn h(&mut self) -> u32 {
+        let (_, height) = Self::dim();
+
+        if height != self.old_height {
+            if self.redraw_acknowledged {
+                self.need_redraw = false;
+                self.old_height = height;
+            } else {
+                self.need_redraw = true;
+            }
+        }
+
+        // Better report the old height until the state has been properly
+        // adapted to acknowledge the change
+        self.old_height
+    }
+
+    pub fn need_redraw(&mut self) -> bool {
+        if self.need_redraw {
+            self.redraw_acknowledged = true;
+        }
+
+        self.need_redraw
     }
 }

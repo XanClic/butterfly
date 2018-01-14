@@ -49,7 +49,12 @@ impl Buffer {
     }
 
     fn end_offset(&mut self) -> Result<u64, String> {
-        let disp_end = self.base_offset + ((self.display.h() - 2) * 16) as u64;
+        let height = self.display.h();
+        if height <= 2 {
+            return Ok(self.base_offset);
+        }
+
+        let disp_end = self.base_offset + (height as u64 - 2) * 16;
         let file_end = self.file.len()?;
 
         if file_end < disp_end {
@@ -142,6 +147,13 @@ impl Buffer {
         Ok(())
     }
 
+    pub fn term_update(&mut self) -> Result<(), String> {
+        self.cursor_to_bounds()?;
+        self.update()?;
+
+        Ok(())
+    }
+
     fn byte_to_x(byte: u8) -> u8 {
         if byte >= 12 {
             byte * 3 + 4
@@ -155,11 +167,33 @@ impl Buffer {
     }
 
     pub fn update_cursor(&mut self) -> Result<(), String> {
+        if self.loc < self.base_offset {
+            return Ok(());
+        }
+
         let x = Self::byte_to_x((self.loc % 16) as u8) + self.replacing_nibble;
         let y = (self.loc - self.base_offset) / 16;
 
         self.display.set_cursor_pos((x + 19) as usize, y as usize);
         self.display.flush();
+        Ok(())
+    }
+
+    /* NOTE: This method does not update the screen */
+    fn cursor_to_bounds(&mut self) -> Result<(), String> {
+        if self.loc < self.base_offset {
+            self.base_offset = self.loc & !0xf;
+        } else if self.loc >= self.end_offset()? {
+            let next_line = (self.loc & !0xf) + 0x10;
+            let disp_size = (self.display.h() as u64 - 2) * 16;
+
+            if next_line < disp_size {
+                self.base_offset = 0;
+            } else {
+                self.base_offset = next_line - disp_size;
+            }
+        }
+
         Ok(())
     }
 
@@ -273,6 +307,10 @@ impl Buffer {
     }
 
     pub fn handle_input(&mut self) -> Result<(), String> {
+        if self.display.need_redraw() {
+            self.term_update()?;
+        }
+
         let input = match self.display.readchar()? {
             Some(c) => c,
             None    => { self.quit_request = true; return Ok(()) }
