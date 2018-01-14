@@ -1,5 +1,6 @@
 use display::{Color,Display};
 use file::File;
+use std::error::Error;
 
 enum Mode {
     Read,
@@ -506,10 +507,48 @@ impl Buffer {
 
         // TODO: Needs something proper.
         match args[0].as_str() {
+            "goto" => self.cmd_goto(args),
             "q" | "quit" => self.cmd_quit(args),
 
             _ => Err(format!("Unknown command “{}”", args[0]))
         }
+    }
+
+    fn cmd_goto(&mut self, args: Vec<String>) -> Result<(), String> {
+        if args.len() != 2 {
+            return Err(format!("Usage: {} <address>", args[0]));
+        }
+
+        // Rust is so nice to read
+        self.loc =
+            match if args[1].starts_with("0x") {
+                    u64::from_str_radix(&args[1][2..], 16)
+                } else if args[1].starts_with("0b") {
+                    // nice gimmmick
+                    u64::from_str_radix(&args[1][2..], 2)
+                } else if args[1].starts_with("0") {
+                    u64::from_str_radix(args[1].as_str(), 8)
+                } else {
+                    args[1].parse::<u64>()
+                }
+        {
+            Ok(v)   => v,
+            Err(e)  => return Err(format!("{}: {}", args[1], e.description()))
+        };
+
+        let lof = self.file.len()?;
+        if self.loc >= lof {
+            if lof > 0 {
+                self.loc = lof - 1;
+            } else {
+                self.loc = 0;
+            }
+        }
+
+        self.cursor_to_bounds()?;
+        self.update()?;
+
+        Ok(())
     }
 
     fn cmd_quit(&mut self, _: Vec<String>) -> Result<(), String> {
