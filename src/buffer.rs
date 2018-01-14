@@ -383,8 +383,13 @@ impl Buffer {
         }
 
         self.base_offset += offset;
-        if self.base_offset >= lof {
-            self.base_offset = lof & !0xf;
+        if self.base_offset + offset >= lof {
+            let line_after_end = (lof + 0xf) & !0xf;
+            if line_after_end >= offset {
+                self.base_offset = line_after_end - offset;
+            } else {
+                self.base_offset = 0;
+            }
         }
 
         self.update()?;
