@@ -506,6 +506,10 @@ impl Buffer {
                 self.cmd_quit(vec![String::from("q")])?;
             },
 
+            'R' => {
+                self.cmd_replace_mode(vec![String::from("R")])?;
+            },
+
             '\x1b' => {
                 let mut escape_sequence = String::new();
 
@@ -543,6 +547,10 @@ impl Buffer {
 
                     "[5~" => self.do_page_up()?,
                     "[6~" => self.do_page_down()?,
+
+                    "" => {
+                        self.cmd_read_mode(vec![String::from("")])?;
+                    },
 
                     _ => (),
                 }
@@ -618,6 +626,19 @@ impl Buffer {
 
     fn cmd_quit(&mut self, _: Vec<String>) -> Result<(), String> {
         self.quit_request = true;
+        Ok(())
+    }
+
+    fn cmd_replace_mode(&mut self, _: Vec<String>) -> Result<(), String> {
+        self.mode = Mode::Replace;
+        self.update_status()?;
+        Ok(())
+    }
+
+    fn cmd_read_mode(&mut self, _: Vec<String>) -> Result<(), String> {
+        self.mode = Mode::Read;
+        self.update_status()?;
+
         Ok(())
     }
 }
