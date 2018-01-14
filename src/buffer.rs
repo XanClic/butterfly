@@ -484,7 +484,7 @@ impl Buffer {
             self.term_update()?;
         }
 
-        let input = match self.display.readchar()? {
+        let mut input = match self.display.readchar()? {
             Some(c) => c,
             None    => { self.quit_request = true; return Ok(()) }
         };
@@ -492,6 +492,12 @@ impl Buffer {
         self.status_info = None;
 
         if let Some(mut cmd_line) = self.command_line.take() {
+            if (input as u8) < 0x20 && input != '\n' {
+                // TODO (Whenever this manages to sufficiently annoy me)
+                cmd_line.push('^');
+                input = (input as u8 + '@' as u8) as char;
+            }
+
             match input {
                 '\n' => {
                     if let Err(e) = self.execute_cmdline(cmd_line) {
@@ -500,12 +506,6 @@ impl Buffer {
                     }
                     self.update_status()?;
                     return Ok(());
-                },
-
-                // TODO (Whenever this manages to sufficiently annoy me)
-                '\x1b' => {
-                    cmd_line.push('^');
-                    cmd_line.push('[');
                 },
 
                 // Backspace
