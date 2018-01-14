@@ -29,6 +29,7 @@ bitmask! {
         StatusModeRead      = (1u64 <<  4),
         StatusModeReplace   = (1u64 <<  5),
         StatusLoc           = (1u64 <<  6),
+        StatusModeModify    = (1u64 <<  7),
     }
 }
 
@@ -204,6 +205,10 @@ impl Display {
         if self.mode.contains(Color::StatusModeRead) {
             // Bold, green
             sgr_string.push_str(";1;32")
+        }
+        if self.mode.contains(Color::StatusModeModify) {
+            // Bold, red
+            sgr_string.push_str(";1;31")
         }
         if self.mode.contains(Color::StatusModeReplace) {
             // Bold, underline, red

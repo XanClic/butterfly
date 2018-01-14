@@ -1,14 +1,16 @@
 use display::{Color,Display};
 use file::File;
-use std::error::Error;
+use undo_file::UndoFile;
 
 enum Mode {
     Read,
+    Modify,
     Replace,
 }
 
 pub struct Buffer {
     file: File,
+    undo_file: UndoFile,
     display: Display,
 
     base_offset: u64,
@@ -17,7 +19,11 @@ pub struct Buffer {
     mode: Mode,
     loc: u64,
     old_loc: u64, // LOC before last update_cursor() call
-    replacing_nibble: u8, // TODO: Can this be done better?
+
+    // TODO: Can this be done better?
+    replacing_nibble: u8,
+    replacing_old: u8,
+    replacing_loc: u64,
 
     quit_request: bool,
 
@@ -31,9 +37,12 @@ pub struct Buffer {
 }
 
 impl Buffer {
-    pub fn new(file: File, display: Display) -> Result<Self, String> {
+    pub fn new(display: Display, file: File, undo_file: UndoFile)
+        -> Result<Self, String>
+    {
         let mut buf = Buffer {
             file: file,
+            undo_file: undo_file,
             display: display,
 
             base_offset: 0,
@@ -42,7 +51,10 @@ impl Buffer {
             mode: Mode::Read,
             loc: 0,
             old_loc: 0,
+
             replacing_nibble: 0,
+            replacing_old: 0,
+            replacing_loc: 0,
 
             quit_request: false,
 
@@ -112,13 +124,14 @@ impl Buffer {
 
         if let Some((ref status_info, ref status_color)) = self.status_info {
             self.display.color_on_ref(status_color);
-            self.display.write_static(status_info.as_str());
+            self.display.write(format!("{:<88}", status_info));
             self.display.color_off_ref(status_color);
         } else if let Some(ref cmd_line) = self.command_line {
             self.display.write(format!(":{:<88}", cmd_line));
         } else {
             let (mode_str, mode_col) = match self.mode {
-                Mode::Read      => ("READ", Color::StatusModeRead),
+                Mode::Read      => ("READ-ONLY", Color::StatusModeRead),
+                Mode::Modify    => ("MODIFY", Color::StatusModeModify),
                 Mode::Replace   => ("REPLACE", Color::StatusModeReplace),
             };
 
@@ -548,15 +561,24 @@ impl Buffer {
 
                 let buf_offset = (self.loc - self.base_offset) as usize;
                 let shift = 4 - self.replacing_nibble * 4;
+
+                if self.replacing_nibble == 0 {
+                    self.replacing_old = self.buffer[buf_offset];
+                    self.replacing_loc = self.loc;
+                } else {
+                    assert!(self.replacing_loc == self.loc);
+                }
+
                 self.buffer[buf_offset] &= !(0xf << shift);
                 self.buffer[buf_offset] |=   val << shift;
 
-                let mut r = Ok(());
+                let mut error = false;
                 if self.replacing_nibble == 1 {
-                    r = self.file.write_u8(self.loc, self.buffer[buf_offset]);
-                    if let Err(ref e) = r {
-                        self.status_info = Some((format!("Error: {}", e),
-                                                 Color::ErrorInfo));
+                    let old = self.replacing_old;
+                    let new = self.buffer[buf_offset];
+                    if let Err(e) = self.perform_replacement(old, new) {
+                        self.status_info = Some((e, Color::ErrorInfo));
+                        error = true;
                     }
                 }
 
@@ -568,7 +590,7 @@ impl Buffer {
                     self.do_cursor_right()?;
                 }
 
-                if r.is_err() {
+                if error {
                     self.update()?;
                 }
 
@@ -577,6 +599,10 @@ impl Buffer {
         }
 
         if let Err(e) = match input {
+            '\x12' => { // ^R
+                self.cmd_redo(vec![String::from("^R")])
+            },
+
             '\x14' => { // ^T
                 self.cmd_jump_back(vec![String::from("^T")])
             },
@@ -585,6 +611,10 @@ impl Buffer {
                 self.command_line = Some(String::new());
                 self.update_status()?;
                 Ok(())
+            },
+
+            'M' => {
+                self.cmd_modify_mode(vec![String::from("M")])
             },
 
             'q' => {
@@ -597,6 +627,10 @@ impl Buffer {
 
             't' => {
                 self.cmd_jump_stack_push(vec![String::from("t")])
+            },
+
+            'u' => {
+                self.cmd_undo(vec![String::from("u")])
             },
 
             '\x1b' => {
@@ -646,6 +680,26 @@ impl Buffer {
         Ok(())
     }
 
+    fn perform_replacement(&mut self, old: u8, new: u8) -> Result<(), String> {
+        let buf_offset = (self.loc - self.base_offset) as usize;
+
+        if let Err(e) = self.undo_file.enter(self.loc, old, new) {
+            self.buffer[buf_offset] = old;
+            return Err(format!("Undo log error: {}", e));
+        }
+
+        if let Err(e) = self.file.write_u8(self.loc, new) {
+            self.buffer[buf_offset] = old;
+            return Err(format!("Write error: {}", e));
+        }
+
+        if let Err(e) = self.undo_file.settle() {
+            return Err(format!("Undo log error: {}", e));
+        }
+
+        Ok(())
+    }
+
     fn execute_cmdline(&mut self, cmdline: String) -> Result<(), String> {
         let mut args = vec![];
         for arg in cmdline.split(' ') {
@@ -667,15 +721,31 @@ impl Buffer {
         }
     }
 
+    fn do_goto(&mut self, mut position: u64) -> Result<(), String> {
+        self.jump_stack.push(self.loc);
+
+        let lof = self.file.len()?;
+        if position >= lof {
+            if lof > 0 {
+                position = lof - 1;
+            } else {
+                position = 0;
+            }
+        }
+        self.loc = position;
+        self.cursor_to_bounds(true)?;
+        self.update()?;
+
+        Ok(())
+    }
+
     fn cmd_goto(&mut self, args: Vec<String>) -> Result<(), String> {
         if args.len() != 2 {
             return Err(format!("Usage: {} <address|start|end>", args[0]));
         }
 
-        let old_loc = self.loc;
-
         // Rust is so nice to read
-        self.loc =
+        let position =
             match if args[1] == "end" {
                     Ok(0xffffffffffffffffu64)
                 } else if args[1] == "start" || args[1] == "begin" {
@@ -695,21 +765,7 @@ impl Buffer {
             Err(e)  => return Err(format!("{}: {}", args[1], e))
         };
 
-        self.jump_stack.push(old_loc);
-
-        let lof = self.file.len()?;
-        if self.loc >= lof {
-            if lof > 0 {
-                self.loc = lof - 1;
-            } else {
-                self.loc = 0;
-            }
-        }
-
-        self.cursor_to_bounds(true)?;
-        self.update()?;
-
-        Ok(())
+        self.do_goto(position)
     }
 
     fn cmd_jump_back(&mut self, _: Vec<String>) -> Result<(), String> {
@@ -733,8 +789,35 @@ impl Buffer {
         Ok(())
     }
 
+    fn cmd_modify_mode(&mut self, _: Vec<String>) -> Result<(), String> {
+        self.mode = Mode::Modify;
+        self.update_status()?;
+        Ok(())
+    }
+
     fn cmd_quit(&mut self, _: Vec<String>) -> Result<(), String> {
         self.quit_request = true;
+        Ok(())
+    }
+
+    fn cmd_redo(&mut self, _: Vec<String>) -> Result<(), String> {
+        if let Mode::Read = self.mode {
+            return Err(String::from("Cannot redo in read-only mode"));
+        }
+
+        let (address, val) = match self.undo_file.redo()? {
+            Some(x) => x,
+            None    => return Err(String::from("Nothing to redo"))
+        };
+
+        if let Err(e) = self.file.write_u8(address, val) {
+            return Err(format!("Write error: {}", e));
+        }
+
+        self.undo_file.settle()?;
+
+        self.do_goto(address)?; // Performs a screen update
+
         Ok(())
     }
 
@@ -747,6 +830,27 @@ impl Buffer {
     fn cmd_read_mode(&mut self, _: Vec<String>) -> Result<(), String> {
         self.mode = Mode::Read;
         self.update_status()?;
+
+        Ok(())
+    }
+
+    fn cmd_undo(&mut self, _: Vec<String>) -> Result<(), String> {
+        if let Mode::Read = self.mode {
+            return Err(String::from("Cannot undo in read-only mode"));
+        }
+
+        let (address, val) = match self.undo_file.undo()? {
+            Some(x) => x,
+            None    => return Err(String::from("Nothing to undo"))
+        };
+
+        if let Err(e) = self.file.write_u8(address, val) {
+            return Err(format!("Write error: {}", e));
+        }
+
+        self.undo_file.settle()?;
+
+        self.do_goto(address)?; // Performs a screen update
 
         Ok(())
     }
