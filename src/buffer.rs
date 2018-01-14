@@ -572,32 +572,17 @@ impl Buffer {
             },
 
             '\x1b' => {
-                let mut escape_sequence = String::new();
+                let mut escape_sequence = String::with_capacity(32);
 
-                loop {
+                // FIXME: This is a very arbitrary max length.
+                //        Also, we need proper terminfo support.
+                while escape_sequence.len() < 32 {
                     let input = match self.display.readchar_nonblock()? {
                         Some(c) => c,
                         None    => break
                     };
 
                     escape_sequence.push(input);
-                    let seq = escape_sequence.as_bytes();
-
-                    // TODO: Proper terminfo support
-                    if seq.len() == 1 {
-                        if seq[0] != ('[' as u8) {
-                            break;
-                        }
-                    } else if seq.len() == 2 {
-                        if seq[1] >= 'A' as u8 && seq[1] <= 'Z' as u8 {
-                            break;
-                        } else if seq[1] >= '0' as u8 && seq[1] <= '9' as u8 {
-                        } else {
-                            break;
-                        }
-                    } else {
-                        break;
-                    }
                 }
 
                 match escape_sequence.as_str() {
@@ -611,10 +596,16 @@ impl Buffer {
                     "[5~" => self.do_page_up()?,
                     "[6~" => self.do_page_down()?,
 
+                    "[1;5F" => self.cmd_goto(vec![String::from("goto"),
+                                                  String::from("end")])?,
+                    "[1;5H" => self.cmd_goto(vec![String::from("goto"),
+                                                  String::from("start")])?,
+
                     "" => {
                         self.cmd_read_mode(vec![String::from("")])?;
                     },
 
+                    // FIXME: Push the sequence back for further evaulation
                     _ => (),
                 }
             },
