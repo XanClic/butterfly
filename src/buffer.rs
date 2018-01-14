@@ -1,4 +1,4 @@
-use display::Display;
+use display::{Color,Display};
 use file::File;
 
 enum Mode {
@@ -15,6 +15,7 @@ pub struct Buffer {
 
     mode: Mode,
     loc: u64,
+    old_loc: u64, // LOC before last update_cursor() call
     replacing_nibble: u8, // TODO: Can this be done better?
 
     quit_request: bool,
@@ -31,6 +32,7 @@ impl Buffer {
 
             mode: Mode::Read,
             loc: 0,
+            old_loc: 0,
             replacing_nibble: 0,
 
             quit_request: false,
@@ -67,62 +69,16 @@ impl Buffer {
     pub fn update(&mut self) -> Result<(), String> {
         let end_offset = self.end_offset()?;
 
-        let mut current_offset = 0;
-        let mut current_output_y = 0;
+        let mut current_offset = self.base_offset;
 
         self.buffer.resize((end_offset - self.base_offset) as usize, 0);
         self.file.read(self.base_offset, &mut self.buffer)?;
 
         self.display.clear();
 
-        while self.base_offset + current_offset < end_offset {
-            self.display.write(format!("{:16x} | ",
-                                       self.base_offset + current_offset));
-
-            for i in 0..16 {
-                if i == 4 || i == 12 {
-                    self.display.write_static(" ");
-                } else if i == 8 {
-                    self.display.write_static("  ");
-                }
-
-                if self.base_offset + current_offset + i < end_offset {
-                    let val = self.buffer[(current_offset + i) as usize];
-                    self.display.write(format!("{:02x} ", val));
-                } else {
-                    self.display.write_static("   ");
-                }
-            }
-
-            self.display.write_static("| ");
-            for i in 0..16 {
-                let chr;
-                if self.base_offset + current_offset + i < end_offset {
-                    chr = self.buffer[(current_offset + i) as usize]
-                } else {
-                    chr = 32
-                };
-
-                if chr < 0x20 || chr > 0x7e {
-                    self.display.write_static(".");
-                } else {
-                    self.display.write(format!("{}", chr as char));
-                }
-            }
-
-            self.display.write_static("\n");
-            current_output_y += 1;
-
+        while current_offset < end_offset {
+            self.redraw_line(current_offset)?;
             current_offset += 16;
-        }
-
-        let display_lines = self.display.h();
-        while current_output_y < display_lines - 2 {
-            self.display.write_static(
-                "                 \
-                 |                                                     \
-                 |                 \n");
-            current_output_y += 1;
         }
 
         self.update_status()?; // Flushes
@@ -154,6 +110,82 @@ impl Buffer {
         Ok(())
     }
 
+    /* NOTE: This method does not flush the output, and it assumes self.buffer
+     *       to be up-to-date */
+    fn redraw_line(&mut self, base: u64) -> Result<(), String> {
+        let end_offset = self.end_offset()?;
+
+        if base < self.base_offset {
+            return Ok(());
+        } else if base >= end_offset {
+            return Ok(());
+        } else if (base & 0xf) != 0 {
+            panic!("Base address is not aligned");
+        }
+
+        let buffer_base = (base - self.base_offset) as usize;
+
+        let y = (base - self.base_offset) / 16;
+        self.display.set_cursor_pos(0 as usize, y as usize);
+
+        let active_line = (self.loc & !0xf) == base;
+
+        if active_line {
+            self.display.color(Color::ActiveLine);
+        }
+
+        // Address
+        self.display.write(format!("{:16x} | ", base));
+
+        // Hex data
+        for i in 0..16 {
+            if i == 4 || i == 12 {
+                self.display.write_static(" ");
+            } else if i == 8 {
+                self.display.write_static("  ");
+            }
+
+            if base + (i as u64) < end_offset {
+                let val = self.buffer[buffer_base + i];
+                self.display.write(format!("{:02x} ", val));
+            } else {
+                self.display.write_static("   ");
+            }
+        }
+
+        self.display.write_static("| ");
+
+        // Character data
+        for i in 0..16 {
+            let chr = if base + (i as u64) < end_offset {
+                self.buffer[buffer_base + i]
+            } else {
+                ' ' as u8
+            };
+
+            let active_char = active_line && base + (i as u64) == self.loc;
+            if active_char {
+                self.display.color(Color::ActiveChar);
+            }
+
+            if chr < 0x20 || chr > 0x7e {
+                self.display.write_static(".");
+            } else {
+                self.display.write((chr as char).to_string());
+            }
+
+            if active_char {
+                self.display.color(Color::ActiveLine);
+            }
+        }
+
+        if active_line {
+            self.display.color(Color::Normal);
+        }
+
+        Ok(())
+    }
+
     fn byte_to_x(byte: u8) -> u8 {
         if byte >= 12 {
             byte * 3 + 4
@@ -167,12 +199,23 @@ impl Buffer {
     }
 
     pub fn update_cursor(&mut self) -> Result<(), String> {
-        if self.loc < self.base_offset {
+        let loc = self.loc;
+        let old_loc = self.old_loc;
+
+        if loc < self.base_offset {
             return Ok(());
         }
 
-        let x = Self::byte_to_x((self.loc % 16) as u8) + self.replacing_nibble;
-        let y = (self.loc - self.base_offset) / 16;
+        // Redraw (unhighlight) old line
+        self.redraw_line(old_loc & !0xf)?;
+
+        // Redraw (highlight) new line
+        self.redraw_line(loc & !0xf)?;
+
+        self.old_loc = loc;
+
+        let x = Self::byte_to_x((loc % 16) as u8) + self.replacing_nibble;
+        let y = (loc - self.base_offset) / 16;
 
         self.display.set_cursor_pos((x + 19) as usize, y as usize);
         self.display.flush();

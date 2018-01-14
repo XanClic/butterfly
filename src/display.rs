@@ -19,6 +19,12 @@ pub struct Display {
     redraw_acknowledged: bool,
 }
 
+pub enum Color {
+    Normal,
+    ActiveLine,
+    ActiveChar,
+}
+
 impl Display {
     pub fn new() -> Result<Self, String> {
         use self::termios::*;
@@ -131,5 +137,16 @@ impl Display {
         }
 
         self.need_redraw
+    }
+
+    pub fn color(&mut self, color: Color) {
+        // TODO: Make these customizable
+        let sgr_string = match color {
+            Color::Normal       => "\x1b[0m",
+            Color::ActiveLine   => "\x1b[0;40m",
+            Color::ActiveChar   => "\x1b[0;40;7m",
+        };
+
+        self.write_static(sgr_string)
     }
 }
