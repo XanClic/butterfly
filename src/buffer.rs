@@ -510,9 +510,9 @@ impl Buffer {
                 let mut escape_sequence = String::new();
 
                 loop {
-                    let input = match self.display.readchar()? {
+                    let input = match self.display.readchar_nonblock()? {
                         Some(c) => c,
-                        None    => return Ok(())
+                        None    => break
                     };
 
                     escape_sequence.push(input);
