@@ -1,5 +1,4 @@
 #[macro_use] extern crate bitmask;
-             extern crate libc;
              extern crate regex;
              extern crate serde;
 #[macro_use] extern crate serde_derive;
