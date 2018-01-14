@@ -135,7 +135,7 @@ impl Buffer {
 
         if let Some((ref status_info, ref status_color)) = self.status_info {
             self.display.color_on_ref(status_color);
-            self.display.write(format!("{:<88}", status_info));
+            self.display.write(format!("{:<89}", status_info));
             self.display.color_off_ref(status_color);
         } else if let Some(ref cmd_line) = self.command_line {
             self.display.write(format!(":{:<88}", cmd_line));
