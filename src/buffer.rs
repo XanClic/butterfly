@@ -57,7 +57,7 @@ impl Buffer {
 
     pub fn restore_display(&mut self) {
         if let Err(e) = self.display.restore() {
-            println!("Failed to restore display: {}", e);
+            eprintln!("Failed to restore display: {}", e);
         }
     }
 
