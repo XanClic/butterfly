@@ -38,8 +38,10 @@ impl Buffer {
             quit_request: false,
         };
 
-        buf.update()?;
-        buf.update_cursor()?;
+        if let Err(e) = buf.term_update() {
+            buf.restore_display();
+            return Err(e);
+        }
 
         Ok(buf)
     }

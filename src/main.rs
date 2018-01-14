@@ -36,7 +36,7 @@ fn main() {
     while !buffer.should_quit() {
         if let Err(e) = buffer.handle_input() {
             buffer.restore_display();
-            println!("Main loop error: {}", e);
+            println!("\n\n\nMain loop error: {}", e);
             exit(1);
         }
     }
