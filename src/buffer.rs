@@ -527,6 +527,36 @@ impl Buffer {
             return Ok(());
         }
 
+        if let Mode::Replace = self.mode {
+            let input_asc = input as u8;
+            if (input_asc >= '0' as u8 && input_asc <= '9' as u8) ||
+               (input_asc >= 'a' as u8 && input_asc <= 'f' as u8) ||
+               (input_asc >= 'A' as u8 && input_asc <= 'F' as u8)
+            {
+                let val = if input_asc >= '0' as u8 && input_asc <= '9' as u8 {
+                    input_asc - '0' as u8
+                } else if input_asc >= 'a' as u8 && input_asc <= 'f' as u8 {
+                    input_asc - 'a' as u8
+                } else {
+                    input_asc - 'A' as u8
+                };
+
+                let shift = 4 - self.replacing_nibble * 4;
+                self.buffer[(self.loc - self.base_offset) as usize] &= !(0xf << shift);
+                self.buffer[(self.loc - self.base_offset) as usize] |=   val << shift;
+
+                if self.replacing_nibble == 0 {
+                    self.replacing_nibble += 1;
+                    self.update_cursor()?;
+                } else {
+                    self.replacing_nibble = 0;
+                    self.do_cursor_right()?;
+                }
+
+                return Ok(());
+            }
+        }
+
         match input {
             ':' => {
                 self.command_line = Some(String::new());
