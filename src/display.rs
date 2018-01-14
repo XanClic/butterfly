@@ -10,6 +10,7 @@ pub struct Display {
     istream: std::io::Stdin,
     ostream: std::io::Stdout,
 
+    tios: termios::Termios,
     initial_tios: termios::Termios,
 
     old_height: u32,
@@ -47,7 +48,7 @@ impl Display {
         let mut tios = initial_tios.clone();
 
         tios.c_lflag &= !(ECHO | ECHOE | ECHOK | ECHONL | ICANON);
-        tios.c_cc[VTIME] = 1;
+        tios.c_cc[VTIME] = 0;
         tios.c_cc[VMIN] = 1;
 
         if let Err(e) = tcsetattr(istream.as_raw_fd(), TCSANOW, &mut tios) {
@@ -64,6 +65,7 @@ impl Display {
             istream: istream,
             ostream: ostream,
 
+            tios: tios,
             initial_tios: initial_tios,
 
             old_height: height,
@@ -127,33 +129,30 @@ impl Display {
     }
 
     pub fn readchar_nonblock(&mut self) -> Result<Option<char>, String> {
-        use libc;
+        use self::termios::*;
 
-        let fl: libc::c_int;
+        let mut tios = self.tios.clone();
+        tios.c_cc[VMIN] = 0;
 
-        unsafe {
-            fl = libc::fcntl(libc::STDIN_FILENO, libc::F_GETFL);
-            if fl < 0 {
-                return Err(String::from("F_GETFL failed on stdin"));
-            }
-            if libc::fcntl(libc::STDIN_FILENO, libc::F_SETFL,
-                           fl | libc::O_NONBLOCK) < 0
-            {
-                return Err(String::from("Failed to make stdin non-blocking"));
-            }
+        if let Err(e) = tcsetattr(self.istream.as_raw_fd(), TCSANOW, &mut tios)
+        {
+            return Err(format!("Failed to switch terminal to non-blocking: {}",
+                               e));
         }
 
         let ret = self.readchar();
 
-        unsafe {
-            if libc::fcntl(libc::STDIN_FILENO, libc::F_SETFL, fl) < 0 &&
-               ret.is_ok()
-            {
-                return Err(String::from("Failed to restore stdin's FD flags"));
-            }
+        tios.c_cc[VMIN] = 1;
+        if let Err(e) = tcsetattr(self.istream.as_raw_fd(), TCSANOW, &mut tios)
+        {
+            return Err(format!("Failed to switch terminal to blocking: {}", e));
         }
 
         ret
+    }
+
+    pub fn unreadchar(&mut self, chr: char) {
+        self.fifo.push_back(chr);
     }
 
     pub fn flush(&mut self) {
