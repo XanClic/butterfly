@@ -17,13 +17,16 @@ pub struct Display {
 
     need_redraw: bool, // TODO: Should this be some callback?
     redraw_acknowledged: bool,
+
+    mode: ColorMode,
 }
 
-pub enum Color {
-    Normal,
-    ActiveLine,
-    ActiveChar,
-    ErrorInfo,
+bitmask! {
+    pub mask ColorMode: u64 where flags Color {
+        ActiveLine = (1u64 <<  0),
+        ActiveChar = (1u64 <<  1),
+        ErrorInfo  = (1u64 <<  2),
+    }
 }
 
 impl Display {
@@ -59,6 +62,8 @@ impl Display {
 
             need_redraw: false,
             redraw_acknowledged: false,
+
+            mode: ColorMode::none(),
         })
     }
 
@@ -141,19 +146,40 @@ impl Display {
         self.need_redraw
     }
 
-    pub fn color(&mut self, color: Color) {
-        self.color_ref(&color);
+    fn update_color(&mut self) {
+        // TODO: Make these customizable
+        let mut sgr_string = String::from("\x1b[0");
+
+        if self.mode.contains(Color::ActiveLine) {
+            sgr_string.push_str(";40");
+        }
+        if self.mode.contains(Color::ErrorInfo) {
+            sgr_string.push_str(";1;31")
+        }
+        // Should be at the end
+        if self.mode.contains(Color::ActiveChar) {
+            sgr_string.push_str(";7");
+        }
+        sgr_string.push('m');
+
+        self.write(sgr_string)
     }
 
-    pub fn color_ref(&mut self, color: &Color) {
-        // TODO: Make these customizable
-        let sgr_string = match *color {
-            Color::Normal       => "\x1b[0m",
-            Color::ActiveLine   => "\x1b[0;40m",
-            Color::ActiveChar   => "\x1b[0;40;7m",
-            Color::ErrorInfo    => "\x1b[0;1;31m",
-        };
+    pub fn color_on(&mut self, color: Color) {
+        self.color_on_ref(&color);
+    }
 
-        self.write_static(sgr_string)
+    pub fn color_off(&mut self, color: Color) {
+        self.color_off_ref(&color);
+    }
+
+    pub fn color_on_ref(&mut self, color: &Color) {
+        self.mode.set(*color);
+        self.update_color();
+    }
+
+    pub fn color_off_ref(&mut self, color: &Color) {
+        self.mode.unset(*color);
+        self.update_color();
     }
 }

@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate bitmask;
+
 use std::env;
 use std::process::exit;
 
