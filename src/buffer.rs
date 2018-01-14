@@ -427,7 +427,11 @@ impl Buffer {
 
                 // Backspace
                 '\x7f' => {
-                    cmd_line.pop();
+                    if cmd_line.pop().is_none() {
+                        self.command_line = None;
+                        self.update_status()?;
+                        return Ok(());
+                    }
                 },
 
                 _ => {
