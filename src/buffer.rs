@@ -125,7 +125,7 @@ impl Buffer {
     }
 
     pub fn term_update(&mut self) -> Result<(), String> {
-        self.cursor_to_bounds()?;
+        self.cursor_to_bounds(false)?;
         self.update()?;
 
         Ok(())
@@ -264,18 +264,52 @@ impl Buffer {
         Ok(())
     }
 
-    /* NOTE: This method does not update the screen */
-    fn cursor_to_bounds(&mut self) -> Result<(), String> {
-        if self.loc < self.base_offset {
-            self.base_offset = self.loc & !0xf;
-        } else if self.loc >= self.end_offset()? {
-            let next_line = (self.loc & !0xf) + 0x10;
-            let disp_size = (self.display.h() as u64 - 2) * 16;
+    /*
+     * Adjusts self.base_offset so the cursor is visible on screen.
+     * Does nothing if the cursor is visible already.
+     * Otherwise, if @recenter is true, self.base_offset is adjusted so the
+     * cursor line is centered (unless LOC is head or tail).
+     * If @recenter is false and the cursor is before self.base_offset, it will
+     * be positioned on the first line.  If the cursor is beyond
+     * self.end_offset(), it will be positioned on the last line.
+     *
+     * NOTE: This method does not update the screen
+     */
+    fn cursor_to_bounds(&mut self, recenter: bool) -> Result<(), String> {
+        let disp_size = (self.display.h() as u64 - 2) * 16;
+        let half_disp_size = (disp_size / 2) & !0xf;
+        let loc_line = self.loc & !0xf;
 
-            if next_line < disp_size {
-                self.base_offset = 0;
-            } else {
-                self.base_offset = next_line - disp_size;
+        if recenter {
+            if self.loc < self.base_offset || self.loc >= self.end_offset()? {
+                if loc_line >= half_disp_size {
+                    self.base_offset = loc_line - half_disp_size;
+                } else {
+                    self.base_offset = 0;
+                }
+
+                // Adjust to tail (ignore centering here)
+                let lof = self.file.len()?;
+                if self.base_offset + disp_size > lof {
+                    let line_after_end = (lof + 0xf) & !0xf;
+                    if line_after_end >= disp_size {
+                        self.base_offset = line_after_end - disp_size;
+                    } else {
+                        self.base_offset = 0;
+                    }
+                }
+            }
+        } else {
+            if self.loc < self.base_offset {
+                self.base_offset = loc_line;
+            } else if self.loc >= self.end_offset()? {
+                let next_line = loc_line + 0x10;
+
+                if next_line < disp_size {
+                    self.base_offset = 0;
+                } else {
+                    self.base_offset = next_line - disp_size;
+                }
             }
         }
 
@@ -554,7 +588,7 @@ impl Buffer {
             }
         }
 
-        self.cursor_to_bounds()?;
+        self.cursor_to_bounds(true)?;
         self.update()?;
 
         Ok(())
