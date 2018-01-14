@@ -541,9 +541,19 @@ impl Buffer {
                     input_asc - 'A' as u8
                 };
 
+                let buf_offset = (self.loc - self.base_offset) as usize;
                 let shift = 4 - self.replacing_nibble * 4;
-                self.buffer[(self.loc - self.base_offset) as usize] &= !(0xf << shift);
-                self.buffer[(self.loc - self.base_offset) as usize] |=   val << shift;
+                self.buffer[buf_offset] &= !(0xf << shift);
+                self.buffer[buf_offset] |=   val << shift;
+
+                let mut r = Ok(());
+                if self.replacing_nibble == 1 {
+                    r = self.file.write_u8(self.loc, self.buffer[buf_offset]);
+                    if let Err(ref e) = r {
+                        self.status_info = Some((format!("Error: {}", e),
+                                                 Color::ErrorInfo));
+                    }
+                }
 
                 if self.replacing_nibble == 0 {
                     self.replacing_nibble += 1;
@@ -551,6 +561,10 @@ impl Buffer {
                 } else {
                     self.replacing_nibble = 0;
                     self.do_cursor_right()?;
+                }
+
+                if r.is_err() {
+                    self.update()?;
                 }
 
                 return Ok(());

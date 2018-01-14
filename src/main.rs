@@ -22,9 +22,9 @@ fn main() {
         exit(1);
     }
 
-    let file = match File::new(&argv[1]) {
+    let file = match File::new(argv[1].clone()) {
         Ok(f)   => f,
-        Err(e)  => { eprintln!("Failed to open {}: {}", argv[1], e); exit(1) }
+        Err(e)  => { eprintln!("Failed to file: {}", e); exit(1) }
     };
 
     let display = match Display::new() {
