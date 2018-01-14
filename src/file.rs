@@ -1,5 +1,4 @@
 use std;
-use std::error::Error;
 use std::io::{Read,Seek,Write};
 
 
@@ -15,7 +14,7 @@ impl File {
         let mut options = std::fs::OpenOptions::new();
         let file = match options.read(true).open(&filename) {
             Ok(r)   => r,
-            Err(e)  => return Err(format!("{}: {}", filename, e.description()))
+            Err(e)  => return Err(format!("{}: {}", filename, e))
         };
 
         Ok(File {
@@ -31,13 +30,12 @@ impl File {
         match self.file.seek(std::io::SeekFrom::Start(position)) {
             Ok(_)   => (),
             Err(e)  => return Err(format!("Failed to seek to {}: {}",
-                                          position, e.description()))
+                                          position, e))
         };
 
         let read_len = match self.file.read(buffer.as_mut_slice()) {
             Ok(r)   => r,
-            Err(e)  => return Err(format!("Failed to read: {}",
-                                          e.description()))
+            Err(e)  => return Err(format!("Failed to read: {}", e))
         };
         if read_len < buffer.len() {
             return Err(String::from("Short read"));
@@ -54,7 +52,7 @@ impl File {
                 Ok(r)   => r,
                 Err(e)  =>
                     return Err(format!("Failed to make the file writable: {}",
-                                       e.description()))
+                                       e))
             };
 
             self.file = file;
@@ -64,14 +62,13 @@ impl File {
         match self.file.seek(std::io::SeekFrom::Start(position)) {
             Ok(_)   => (),
             Err(e)  => return Err(format!("Failed to seek to {}: {}",
-                                          position, e.description()))
+                                          position, e))
         };
 
         let buffer: [u8; 1] = [byte];
         let written_len = match self.file.write(&buffer) {
             Ok(r)   => r,
-            Err(e)  => return Err(format!("Failed to write: {}",
-                                          e.description()))
+            Err(e)  => return Err(format!("Failed to write: {}", e))
         };
         if written_len < 1 {
             return Err(String::from("Did not write anything"));
@@ -82,8 +79,7 @@ impl File {
     pub fn len(&mut self) -> Result<u64, String> {
         match self.file.seek(std::io::SeekFrom::End(0)) {
             Ok(r)   => Ok(r),
-            Err(e)  => Err(format!("Failed to inquire file length: {}",
-                                   e.description()))
+            Err(e)  => Err(format!("Failed to inquire file length: {}", e))
         }
     }
 }

@@ -2,7 +2,6 @@ extern crate termios;
 extern crate termsize;
 
 use std;
-use std::error::Error;
 use std::io::{Read,Write};
 use std::os::unix::io::AsRawFd;
 
@@ -42,7 +41,7 @@ impl Display {
 
         let initial_tios = match Termios::from_fd(istream.as_raw_fd()) {
             Ok(t)   => t,
-            Err(e)  => return Err(String::from(e.description()))
+            Err(e)  => return Err(format!("Failed to read termios: {}", e))
         };
         let mut tios = initial_tios.clone();
 
@@ -51,7 +50,7 @@ impl Display {
         tios.c_cc[VMIN] = 1;
 
         if let Err(e) = tcsetattr(istream.as_raw_fd(), TCSANOW, &mut tios) {
-            return Err(String::from(e.description()));
+            return Err(format!("Failed to set terminal attributes: {}", e));
         }
 
         let (_, height) = Self::dim();
@@ -77,7 +76,7 @@ impl Display {
         if let Err(e) = tcsetattr(self.istream.as_raw_fd(), TCSANOW,
                                   &mut self.initial_tios)
         {
-            return Err(String::from(e.description()));
+            return Err(format!("Failed to restore terminal attributes: {}", e));
         }
 
         Ok(())
@@ -107,7 +106,7 @@ impl Display {
                 if e.kind() == std::io::ErrorKind::WouldBlock {
                     0
                 } else {
-                    return Err(String::from(e.description()))
+                    return Err(format!("Failed to read from stdin: {}", e))
                 }
             }
         };

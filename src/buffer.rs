@@ -692,7 +692,7 @@ impl Buffer {
                 }
         {
             Ok(v)   => v,
-            Err(e)  => return Err(format!("{}: {}", args[1], e.description()))
+            Err(e)  => return Err(format!("{}: {}", args[1], e))
         };
 
         self.jump_stack.push(old_loc);
