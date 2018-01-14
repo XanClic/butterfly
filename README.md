@@ -21,8 +21,13 @@ TODO
 - [x] Jump stack (^T)
 - [x] Infinite undo by writing modification steps into some file
 - [x] Mouse support
-- [ ] Data display: u8, i8, LE/BE (hex in LE)
+- [ ] Data display: u8, i8, LE/BE, ... (hex in LE)
 - [ ] Structures: User should be able to define structures in JSON files
+      (things to keep in mind: highlighting, defining links from data ("this is
+       an offset") (relative offsets will be hard, but relative to LOC should be
+       possible))
+- [ ] Proper command separation: Currently, all command logic and data is kept
+      in src/buffer.rs.  That needs to change.
 - [ ] Find things: Every website has this now, so we need that, too
 - [ ] Overwrite unusable undo files: Instead of just aborting or doing random
       things when some undo file cannot be read, we should just overwrite it
