@@ -7,3 +7,4 @@ authors = ["Hanna Reitz <hanna@xanclic.moe>"]
 termios = "0.3"
 termsize = "0.1"
 bitmask = "0.4"
+libc = "0.2"

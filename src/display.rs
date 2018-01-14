@@ -103,7 +103,13 @@ impl Display {
         let mut input: [u8; 1] = [0];
         let ret = match self.istream.read(&mut input) {
             Ok(r)   => r,
-            Err(e)  => return Err(String::from(e.description()))
+            Err(e)  => {
+                if e.kind() == std::io::ErrorKind::WouldBlock {
+                    0
+                } else {
+                    return Err(String::from(e.description()))
+                }
+            }
         };
 
         if ret < 1 {
@@ -111,6 +117,36 @@ impl Display {
         } else {
             Ok(Some(input[0] as char))
         }
+    }
+
+    pub fn readchar_nonblock(&mut self) -> Result<Option<char>, String> {
+        use libc;
+
+        let fl: libc::c_int;
+
+        unsafe {
+            fl = libc::fcntl(libc::STDIN_FILENO, libc::F_GETFL);
+            if fl < 0 {
+                return Err(String::from("F_GETFL failed on stdin"));
+            }
+            if libc::fcntl(libc::STDIN_FILENO, libc::F_SETFL,
+                           fl | libc::O_NONBLOCK) < 0
+            {
+                return Err(String::from("Failed to make stdin non-blocking"));
+            }
+        }
+
+        let ret = self.readchar();
+
+        unsafe {
+            if libc::fcntl(libc::STDIN_FILENO, libc::F_SETFL, fl) < 0 &&
+               ret.is_ok()
+            {
+                return Err(String::from("Failed to restore stdin's FD flags"));
+            }
+        }
+
+        ret
     }
 
     pub fn flush(&mut self) {

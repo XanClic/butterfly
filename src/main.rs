@@ -1,5 +1,6 @@
 #[macro_use]
 extern crate bitmask;
+extern crate libc;
 
 use std::env;
 use std::process::exit;
