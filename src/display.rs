@@ -215,27 +215,27 @@ impl Display {
         }
         if self.mode.contains(Color::ErrorInfo) {
             // Bold, red
-            sgr_string.push_str(";1;31")
+            sgr_string.push_str(";1;31");
         }
         if self.mode.contains(Color::AddressColumn) {
             // Cyan
-            sgr_string.push_str(";36")
+            sgr_string.push_str(";36");
         }
         if self.mode.contains(Color::StatusModeRead) {
             // Bold, green
-            sgr_string.push_str(";1;32")
+            sgr_string.push_str(";1;32");
         }
         if self.mode.contains(Color::StatusModeModify) {
             // Bold, red
-            sgr_string.push_str(";1;31")
+            sgr_string.push_str(";1;31");
         }
         if self.mode.contains(Color::StatusModeReplace) {
             // Bold, underline, red
-            sgr_string.push_str(";1;4;31")
+            sgr_string.push_str(";1;4;31");
         }
         if self.mode.contains(Color::StatusLoc) {
             // Cyan
-            sgr_string.push_str(";36")
+            sgr_string.push_str(";36");
         }
 
         // Should be at the end
