@@ -22,10 +22,12 @@ TODO
 - [x] Infinite undo by writing modification steps into some file
 - [x] Mouse support
 - [ ] Data display: u8, i8, LE/BE, ... (hex in LE)
-- [ ] Structures: User should be able to define structures in JSON files
-      (things to keep in mind: highlighting, defining links from data ("this is
-       an offset") (relative offsets will be hard, but relative to LOC should be
-       possible))
+- [ ] Structures: User should be able to define structures in JSON files – this
+      is considered complete when I have a usable qcow2 definition
+      (for this, I will need links ("this value is an offset for that value"))
+- [ ] Structure highlighting: When you click on a value, it should be
+      highlighted in the data stream
+- [ ] Be able to display the list of installed structs
 - [ ] Proper command separation: Currently, all command logic and data is kept
       in src/buffer.rs.  That needs to change.
 - [ ] Find things: Every website has this now, so we need that, too

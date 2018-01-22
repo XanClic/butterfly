@@ -7,11 +7,17 @@ use std::io::Seek;
 #[derive(Serialize, Deserialize)]
 struct Config {
     files: HashMap<String, CfgEntryFile>,
+    structs: Vec<CfgEntryStruct>,
 }
 
 #[derive(Serialize, Deserialize)]
 struct CfgEntryFile {
     undo_file_name: String,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct CfgEntryStruct {
+    pub path: String,
 }
 
 
@@ -27,12 +33,13 @@ impl Config {
     pub fn new() -> Self {
         Config {
             files: HashMap::<String, CfgEntryFile>::new(),
+            structs: Vec::<CfgEntryStruct>::new(),
         }
     }
 }
 
 
-fn base_dir() -> Result<std::path::PathBuf, String> {
+pub fn base_dir() -> Result<std::path::PathBuf, String> {
     let mut path = match std::env::home_dir() {
         Some(p) => p,
         None    => return Err(String::from("Home directory unknown"))
@@ -152,5 +159,9 @@ impl ConfigFile {
         let mut base_path = base_dir()?;
         base_path.push(&file_entry.undo_file_name);
         Ok(base_path.as_path().to_string_lossy().into_owned())
+    }
+
+    pub fn get_structs(&self) -> &Vec<CfgEntryStruct> {
+        &self.config.structs
     }
 }

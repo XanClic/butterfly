@@ -19,6 +19,8 @@ use display::Display;
 mod file;
 use file::File;
 
+mod structs;
+
 mod undo_file;
 use undo_file::UndoFile;
 
@@ -50,7 +52,7 @@ fn main() {
         Err(e)  => { eprintln!("Failed to open display: {}", e); exit(1) }
     };
 
-    let mut buffer = match Buffer::new(display, file, undo_file) {
+    let mut buffer = match Buffer::new(display, file, undo_file, &mut config) {
         Ok(b)   => b,
         Err(e)  => { eprintln!("Failed to initialize buffer: {}", e); exit(1) }
     };
