@@ -7,6 +7,14 @@ time (Okteta) did not want to allow me to edit more than 2 GB.
 How hard can it be?
 
 
+Tips on using it
+================
+
+You may want to copy the .butterfly directory from this repository to your home
+directory before launching butterfly so that you have access to all the
+structure definitions.
+
+
 TODO
 ====
 
@@ -21,13 +29,16 @@ TODO
 - [x] Jump stack (^T)
 - [x] Infinite undo by writing modification steps into some file
 - [x] Mouse support
-- [ ] Data display: u8, i8, LE/BE, ... (hex in LE)
+- [x] Data display: u8, i8, LE/BE, ... (hex in LE) – this is the `scalars`
+      structure now (use it through `:struct scalars`)
 - [ ] Structures: User should be able to define structures in JSON files – this
       is considered complete when I have a usable qcow2 definition
       (for this, I will need links ("this value is an offset for that value"))
 - [ ] Structure highlighting: When you click on a value, it should be
       highlighted in the data stream
-- [ ] Be able to display the list of installed structs
+- [ ] Be able to display the list of installed structs (this requires some way
+      for commands to display a lengthy output, which would be quite nice to
+      implement a :help also).
 - [ ] Proper command separation: Currently, all command logic and data is kept
       in src/buffer.rs.  That needs to change.
 - [ ] Find things: Every website has this now, so we need that, too
