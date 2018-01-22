@@ -7,6 +7,20 @@ time (Okteta) did not want to allow me to edit more than 2 GB.
 How hard can it be?
 
 
+“Notable” features
+------------------
+
+Note that all of the following are written in indicative mood, i.e. “does X”,
+but they are actually meant as “should do X, and if it does not, that is a bug”.
+
+- Works with arbitrarily large files while using few resources
+- Infinite undo/redo
+- Will not modify a file until you explicitly change from the default “READ”
+  mode into some other (currently “MODIFY” and “REPLACE”)
+- Modifications are carried out instantly (not sure if that is a feature, but
+  that is how it is right now)
+
+
 Tips on using it
 ================
 
@@ -18,12 +32,12 @@ structure definitions.
 TODO
 ====
 
-- [x] Simple status line (with different modes, i.e. "READ" and "REPLACE")
+- [x] Simple status line (with different modes, i.e. “READ” and “REPLACE”)
 - [x] Cursor movement (with main loop)
 - [x] Additional char-column cursor
 - [x] Scrolling
 - [x] Proper commands (e.g. for goto)
-- [x] Actual replacement ("REPLACE") + Writing
+- [x] Actual replacement (“REPLACE”) + Writing
       (No need for buffering with infinite undo, and performance-wise, who cares.
        User input is slow anyway.)
 - [x] Jump stack (^T)
@@ -33,7 +47,7 @@ TODO
       structure now (use it through `:struct scalars`)
 - [ ] Structures: User should be able to define structures in JSON files – this
       is considered complete when I have a usable qcow2 definition
-      (for this, I will need links ("this value is an offset for that value"))
+      (for this, I will need links (“this value is an offset for that value”))
 - [ ] Structure highlighting: When you click on a value, it should be
       highlighted in the data stream
 - [ ] Be able to display the list of installed structs (this requires some way
@@ -46,5 +60,8 @@ TODO
       things when some undo file cannot be read, we should just overwrite it
       (or maybe tell the user where it is and create a new one, so if they want
        to debug the issue...)
+- [ ] Also, allow the user to discard specific undo history (e.g. “everything
+      more than 1000 steps ago”)
 - [ ] Make some things configurable (themes, scroll length, etc.)
 - [ ] Proper terminfo support (for arbitrary escape sequences at least)
+- [ ] Compress prehistoric undo history to save space
