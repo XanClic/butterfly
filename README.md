@@ -14,7 +14,8 @@ Note that all of the following are written in indicative mood, i.e. “does X”
 but they are actually meant as “should do X, and if it does not, that is a bug”.
 
 - Works with arbitrarily large files while using few resources
-- Infinite undo/redo
+- Infinite and persistent undo/redo (files are remembered based on their
+  realpath)
 - Will not modify a file until you explicitly change from the default “READ”
   mode into some other (currently “MODIFY” and “REPLACE”)
 - Modifications are carried out instantly (not sure if that is a feature, but
