@@ -1,6 +1,8 @@
+use config::ConfigFile;
 use display::{Color,Display};
 use file::File;
 use regex::Regex;
+use structs::Structs;
 use undo_file::UndoFile;
 
 enum Mode {
@@ -13,6 +15,9 @@ pub struct Buffer {
     file: File,
     undo_file: UndoFile,
     display: Display,
+
+    structs: Structs,
+    active_struct: Option<usize>,
 
     base_offset: u64,
     buffer: Vec<u8>,
@@ -43,13 +48,17 @@ pub struct Buffer {
 const SCROLL_OFFSET: u64 = 0x100;
 
 impl Buffer {
-    pub fn new(display: Display, file: File, undo_file: UndoFile)
+    pub fn new(display: Display, file: File, undo_file: UndoFile,
+               config: &mut ConfigFile)
         -> Result<Self, String>
     {
         let mut buf = Buffer {
             file: file,
             undo_file: undo_file,
             display: display,
+
+            structs: Structs::load(config)?,
+            active_struct: None,
 
             base_offset: 0,
             buffer: Vec::<u8>::new(),
@@ -121,6 +130,21 @@ impl Buffer {
         }
 
         self.update_status()?; // Flushes
+        Ok(())
+    }
+
+    fn update_struct(&mut self) -> Result<(), String> {
+        // FIXME: Hard-coding is bad
+        let start_x = 92;
+
+        let a_s_i = match self.active_struct {
+            Some(i) => i,
+            None    => return Ok(())
+        };
+        let a_s = self.structs.get_mut(a_s_i);
+
+        a_s.update(&mut self.file, self.loc, &mut self.display, start_x, 0)?;
+
         Ok(())
     }
 
@@ -299,6 +323,8 @@ impl Buffer {
     pub fn update_cursor(&mut self) -> Result<(), String> {
         let loc = self.loc;
         let old_loc = self.old_loc;
+
+        self.update_struct()?;
 
         if loc < self.base_offset {
             return Ok(());
@@ -919,6 +945,7 @@ impl Buffer {
         match args[0].as_str() {
             "g" | "goto" => self.cmd_goto(args),
             "q" | "quit" => self.cmd_quit(args),
+            "struct" => self.cmd_struct(args),
 
             _ => Err(format!("Unknown command “{}”", args[0]))
         }
@@ -1033,6 +1060,29 @@ impl Buffer {
     fn cmd_read_mode(&mut self, _: Vec<String>) -> Result<(), String> {
         self.mode = Mode::Read;
         self.update_status()?;
+
+        Ok(())
+    }
+
+    fn cmd_struct(&mut self, args: Vec<String>) -> Result<(), String> {
+        if args.len() != 2 {
+            return Err(format!("Usage: {} <struct name>", args[0]));
+        }
+
+        let mut a_s = 0;
+        while a_s < self.structs.len() {
+            if self.structs.get(a_s).get_name() == args[1] {
+                break;
+            }
+
+            a_s += 1;
+        }
+        if a_s == self.structs.len() {
+            return Err(format!("Unknown struct “{}”", args[1]));
+        }
+
+        self.active_struct = Some(a_s);
+        self.update()?;
 
         Ok(())
     }

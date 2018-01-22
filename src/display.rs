@@ -34,6 +34,10 @@ bitmask! {
         StatusModeReplace   = (1u64 <<  5),
         StatusLoc           = (1u64 <<  6),
         StatusModeModify    = (1u64 <<  7),
+        StructH0            = (1u64 <<  8),
+        StructH1            = (1u64 <<  9),
+        StructH2            = (1u64 << 10),
+        StructH3P           = (1u64 << 11),
     }
 }
 
@@ -99,6 +103,10 @@ impl Display {
 
     pub fn clear(&mut self) {
         self.ostream.write(b"\x1b[2J\x1b[;H").unwrap();
+    }
+
+    pub fn clear_line(&mut self) {
+        self.ostream.write(b"\x1b[K").unwrap();
     }
 
     pub fn set_cursor_pos(&mut self, x: usize, y: usize) {
@@ -236,6 +244,14 @@ impl Display {
         if self.mode.contains(Color::StatusLoc) {
             // Cyan
             sgr_string.push_str(";36");
+        }
+        if self.mode.contains(Color::StructH0) {
+            // Bold, blue
+            sgr_string.push_str(";1;34");
+        }
+        if self.mode.contains(Color::StructH1) {
+            // Blue
+            sgr_string.push_str(";34");
         }
 
         // Should be at the end

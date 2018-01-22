@@ -43,6 +43,24 @@ impl File {
         Ok(())
     }
 
+    pub fn read_u8(&mut self, position: u64) -> Result<u8, String> {
+        match self.file.seek(std::io::SeekFrom::Start(position)) {
+            Ok(_)   => (),
+            Err(e)  => return Err(format!("Failed to seek to {}: {}",
+                                          position, e))
+        };
+
+        let mut buffer: [u8; 1] = [0];
+        let read_len = match self.file.read(&mut buffer) {
+            Ok(r)   => r,
+            Err(e)  => return Err(format!("Failed to read: {}", e))
+        };
+        if read_len < 1 {
+            return Err(String::from("Short read"));
+        }
+        Ok(buffer[0])
+    }
+
     pub fn write_u8(&mut self, position: u64, byte: u8) -> Result<(), String> {
         if !self.writable {
             // Hoooly shit this is stupid
