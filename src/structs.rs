@@ -44,6 +44,7 @@ struct StateValue {
 enum StateActualValue {
     Unsigned(u64),
     Signed(i64),
+    String(String),
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -67,6 +68,7 @@ struct StructValueOffsetLoc {
 #[serde(tag = "type")]
 enum StructValueKind {
     Integer(StructValueKindInteger),
+    String(StructValueKindString),
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -90,6 +92,23 @@ enum StructValueKindIntegerSign {
     SignOneCompl,
     SignBitValue,
     SignOffset(u64),
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+struct StructValueKindString {
+    length: StructValueKindStringLength,
+    encoding: StructValueKindStringEncoding,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+#[serde(tag = "type")]
+enum StructValueKindStringLength {
+    Fixed { length: usize },
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+enum StructValueKindStringEncoding {
+    ASCII,
 }
 
 
@@ -295,6 +314,34 @@ impl StateFolder {
                                 },
                             });
                         },
+
+                        StructValueKind::String(ref s) => {
+                            let length = match s.length {
+                                StructValueKindStringLength::Fixed
+                                    { length } => {
+                                    length
+                                },
+                            };
+
+                            let mut result = String::new();
+                            match s.encoding {
+                                StructValueKindStringEncoding::ASCII => {
+                                    for _ in 0..length {
+                                        let chr = file.read_u8(offset)?;
+                                        offset += 1;
+                                        if chr > 0x7f {
+                                            return Err(format!(
+                                                "Non-ASCII character in \
+                                                 supposedly ASCII string \
+                                                 (field {})", corr.name));
+                                        }
+                                        result.push(chr as char);
+                                    }
+                                }
+                            }
+
+                            val.value = Some(StateActualValue::String(result));
+                        },
                     }
                 },
             };
@@ -319,6 +366,9 @@ impl StateFolder {
                  } else {
                      -*s as u64
                  }),
+
+            &StateActualValue::String(_) =>
+                panic!("format_int() expects an integer"),
         };
         if uval == 0 {
             return String::from("0");
@@ -399,6 +449,15 @@ impl StateFolder {
                         &StructValueKind::Integer(ref i) =>
                             self.format_int(val.value.as_ref().unwrap(),
                                             i.base),
+
+                        &StructValueKind::String(_) =>
+                            match val.value.as_ref().unwrap() {
+                                &StateActualValue::String(ref s) => {
+                                    s.clone()
+                                },
+
+                                _ => panic!("strings must stay strings")
+                            }
                     };
                     display.write(format!("{}: {}",
                                           val.struct_corr.name, disp));
