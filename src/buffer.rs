@@ -143,7 +143,13 @@ impl Buffer {
         };
         let a_s = self.structs.get_mut(a_s_i);
 
-        a_s.update(&mut self.file, self.loc, &mut self.display, start_x, 0)?;
+        if let Err(e) = a_s.update(&mut self.file, self.loc,
+                                   &mut self.display, start_x, 0)
+        {
+            // TODO: Don't just overwrite this
+            self.status_info = Some((format!("struct: {}", e),
+                                     Color::ErrorInfo));
+        }
 
         Ok(())
     }
