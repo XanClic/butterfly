@@ -54,6 +54,7 @@ TODO
 - [ ] Be able to display the list of installed structs (this requires some way
       for commands to display a lengthy output, which would be quite nice to
       implement a :help also).
+- [ ] Allow appending
 - [ ] Proper command separation: Currently, all command logic and data is kept
       in src/buffer.rs.  That needs to change.
 - [ ] Find things: Every website has this now, so we need that, too
