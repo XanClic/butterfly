@@ -28,9 +28,10 @@ but they are actually meant as “should do X, and if it does not, that is a bug
 Tips on using it
 ================
 
-You may want to clone my dot-butterfly repository, build it and and move the
-result into ~/.butterfly (or even better: link it) before launching butterfly
-so that you have access to all of the structure definitions.
+You may want to clone
+[my dot-butterfly repository](https://github.com/XanClic/dot-butterfly), build
+it and and move the result into `~/.butterfly` (or even better: link it) before
+launching butterfly so that you have access to all of the structure definitions.
 
 
 TODO
