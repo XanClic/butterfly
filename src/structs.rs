@@ -1,4 +1,4 @@
-use config::ConfigFile;
+use config::{self, ConfigFile};
 use display::{Color, Display};
 use file::File;
 use std;
@@ -24,7 +24,12 @@ impl Structs {
         let mut structs = Vec::<Struct>::new();
 
         for (name, cs) in cfg.get_structs().iter() {
-            let mut file = File::new(cs.path.clone())?;
+            let mut full_path = config::base_dir()?;
+            full_path.push(cs.path.clone());
+
+            let path_str = full_path.as_path().to_string_lossy().into_owned();
+
+            let mut file = File::new(path_str)?;
             let len = file.len()?;
 
             let mut buffer = Vec::new();
