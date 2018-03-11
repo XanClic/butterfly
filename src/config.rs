@@ -7,7 +7,7 @@ use std::io::Seek;
 #[derive(Serialize, Deserialize)]
 struct Config {
     files: HashMap<String, CfgEntryFile>,
-    structs: Vec<CfgEntryStruct>,
+    structs: HashMap<String, CfgEntryStruct>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -33,7 +33,7 @@ impl Config {
     pub fn new() -> Self {
         Config {
             files: HashMap::<String, CfgEntryFile>::new(),
-            structs: Vec::<CfgEntryStruct>::new(),
+            structs: HashMap::<String, CfgEntryStruct>::new(),
         }
     }
 }
@@ -161,7 +161,7 @@ impl ConfigFile {
         Ok(base_path.as_path().to_string_lossy().into_owned())
     }
 
-    pub fn get_structs(&self) -> &Vec<CfgEntryStruct> {
+    pub fn get_structs(&self) -> &HashMap<String, CfgEntryStruct> {
         &self.config.structs
     }
 }

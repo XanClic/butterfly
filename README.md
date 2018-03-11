@@ -20,14 +20,17 @@ but they are actually meant as “should do X, and if it does not, that is a bug
   mode into some other (currently “MODIFY” and “REPLACE”)
 - Modifications are carried out instantly (not sure if that is a feature, but
   that is how it is right now)
+- Structure definitions through a stupidly complicated turing-complete (I know
+  this is a bad thing) byte code interpreter (op code list in
+  `doc/struct-opcodes`)
 
 
 Tips on using it
 ================
 
-You may want to copy the .butterfly directory from this repository to your home
-directory before launching butterfly so that you have access to all the
-structure definitions.
+You may want to clone my dot-butterfly repository, build it and and move the
+result into ~/.butterfly before launching butterfly so that you have access to
+all of the structure definitions.
 
 
 TODO
@@ -46,9 +49,12 @@ TODO
 - [x] Mouse support
 - [x] Data display: u8, i8, LE/BE, ... (hex in LE) – this is the `scalars`
       structure now (use it through `:struct scalars`)
-- [ ] Structures: User should be able to define structures in JSON files – this
+- [x] Structures: User should be able to define structures in JSON files – this
       is considered complete when I have a usable qcow2 definition
       (for this, I will need links (“this value is an offset for that value”))
+- [ ] Structure section folding
+- [ ] Do not update structure views that do not depend on the cursor position
+      when moving the cursor
 - [ ] Structure highlighting: When you click on a value, it should be
       highlighted in the data stream
 - [ ] Be able to display the list of installed structs (this requires some way
