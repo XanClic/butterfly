@@ -29,8 +29,8 @@ Tips on using it
 ================
 
 You may want to clone my dot-butterfly repository, build it and and move the
-result into ~/.butterfly before launching butterfly so that you have access to
-all of the structure definitions.
+result into ~/.butterfly (or even better: link it) before launching butterfly
+so that you have access to all of the structure definitions.
 
 
 TODO
