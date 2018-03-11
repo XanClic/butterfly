@@ -1,0 +1,34 @@
+Header:
+    0x00: magic: str/3/ASCII
+    0x03: magic2: u8
+    0x04: version: u32/be as dec
+    0x08: backing_file_offset: u64/be
+    0x10: backing_file_size: u32/be as dec
+    0x14: cluster_bits: u32/be as dec
+    0x18: size: u64/be as dec
+    0x20: crypt_method: u32/be as dec
+    0x24: l1_size: u32/be
+    0x28: l1_table_offset: u64/be
+    0x30: refcount_table_offset: u64/be
+    0x38: refcount_table_clusters: u32/be
+    0x3c: nb_snapshots: u32/be as dec
+    0x40: snapshots_offset: u64/be
+
+    v3: if Header.version >= 3
+        0x48: incompatible_features: u64/be as bin
+        0x50: compatible_features: u64/be as bin
+        0x58: autoclear_features: u64/be as bin
+        0x60: refcount_order: u32/be as dec
+        0x64: header_length: u32/be as dec
+
+        loop/Header.v3.header_length/.__base + .length align_up 8/.type != 0 extensions:
+            .__base + 0x00: type: u32/be
+            .__base + 0x04: length: u32/be
+
+            Backing_format: if .type == 0xe2792aca
+                Header.v3.extensions.__base + 0x08: format: str/.length/ASCII
+
+            Feature_name_table: if .type == 0x6803f857
+                Header.v3.extensions.__base + 0x08: type: u8 as dec
+                Header.v3.extensions.__base + 0x09: bit: u8 as dec
+                Header.v3.extensions.__base + 0x0a: name: str/.length/ASCII

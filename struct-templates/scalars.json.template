@@ -1,0 +1,19 @@
+Bytes:
+    __loc: u8: u8 as dec
+    __loc: i8: i8 as dec
+
+Little_Endian:
+    __loc: u16: u16/le
+    __loc: i16: i16/le as dec
+    __loc: u32: u32/le
+    __loc: i32: i32/le as dec
+    __loc: u64: u64/le
+    __loc: i64: i64/le as dec
+
+Big_Endian:
+    __loc: u16: u16/be
+    __loc: i16: i16/be as dec
+    __loc: u32: u32/be
+    __loc: i32: i32/be as dec
+    __loc: u64: u64/be
+    __loc: i64: i64/be as dec

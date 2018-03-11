@@ -1,0 +1,72 @@
+{
+  "name": "qcow2",
+  "content": [
+    {
+      "type": "Folder",
+      "name": "header",
+      "content": [
+        {
+          "type": "Value",
+          "name": "magic",
+          "offset": {
+            "type": "Abs",
+            "offset": 0
+          },
+          "kind": {
+            "type": "String",
+            "length": {
+              "type": "Fixed",
+              "length": 3
+            },
+            "encoding": "ASCII"
+          }
+        },
+        {
+          "type": "Value",
+          "name": "magic2",
+          "offset": {
+            "type": "Abs",
+            "offset": 3
+          },
+          "kind": {
+            "type": "Integer",
+            "sign": "Unsigned",
+            "width": 1,
+            "endianness": "Little"
+          },
+          "base": 16
+        },
+        {
+          "type": "Value",
+          "name": "version",
+          "offset": {
+            "type": "Abs",
+            "offset": 4
+          },
+          "kind": {
+            "type": "Integer",
+            "sign": "Unsigned",
+            "width": 4,
+            "endianness": "Big"
+          },
+          "base": 10
+        },
+        {
+          "type": "Value",
+          "name": "backing_file_offset",
+          "offset": {
+            "type": "Abs",
+            "offset": 8
+          },
+          "kind": {
+            "type": "Integer",
+            "sign": "Unsigned",
+            "width": 8,
+            "endianness": "Big"
+          },
+          "base": 16
+        }
+      ]
+    }
+  ]
+}
