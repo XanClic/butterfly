@@ -1,0 +1,295 @@
+0x00 .. stop
+  0x00
+  Stops execution.
+
+0x01 .. Switch endianness
+  0x01 subfunction/u8
+
+    0x00 .. f2le
+      0x01 0x00
+      Switch file mode to LE.
+
+    0x01 .. f2be
+      0x01 0x01
+      Switch file mode to BE.
+
+
+0x10 .. lic <constant>
+  0x10 constant/u64
+  PUSH(constant)
+
+0x11 .. lfc <constant>
+  0x11 constant/f64
+  FPUSH(constant)
+
+0x12 .. lsc <constant>
+  0x12 charnum/u64 string/utf8
+  SPUSH(string[0..charnum-1])
+
+0x14 .. lic $LOC
+  0x14
+  PUSH($LOC)
+
+0x18 .. Load integer from file
+  0x18 subfunction/u8
+
+    0x00 .. flu64
+      0x18 0x00
+      offset = POP()
+      PUSH($FILE[offset].u64)
+
+    0x01 .. fli64
+      0x18 0x01
+      offset = POP()
+      PUSH($FILE[offset].i64 as u64)
+
+    0x02 .. flu32
+      0x18 0x02
+      offset = POP()
+      PUSH($FILE[offset].u32 as u64)
+
+    0x03 .. fli32
+      0x18 0x03
+      offset = POP()
+      PUSH($FILE[offset].i32 as u64)
+
+    0x04 .. flu16
+      0x18 0x04
+      offset = POP()
+      PUSH($FILE[offset].u16 as u64)
+
+    0x05 .. fli16
+      0x18 0x05
+      offset = POP()
+      PUSH($FILE[offset].i16 as u64)
+
+    0x06 .. flu8
+      0x18 0x06
+      offset = POP()
+      PUSH($FILE[offset].u8 as u64)
+
+    0x07 .. fli8
+      0x18 0x07
+      offset = POP()
+      PUSH($FILE[offset].i8 as u64)
+
+0x19 .. Load floating point value from file
+  0x19 subfunction/u8
+
+    0x00 .. flf64
+      0x19 0x00
+      offset = POP()
+      FPUSH($FILE[offset].f64)
+
+    0x01 .. flf32
+      0x19 0x01
+      offset = POP()
+      FPUSH($FILE[offset].f32 as f64)
+
+0x1a .. Load string from file
+  0x1a subfunction/u8
+
+    0x00 .. flsutf8null
+      0x1a 0x00
+      offset = POP()
+      SPUSH($FILE[offset..null].utf8)
+
+    0x01 .. flsutf8sized
+      0x1a 0x01
+      length = POP()
+      offset = POP()
+      SPUSH($FILE[offset..offset+length-1].utf8)
+
+    0x02 .. flsasciinull
+      0x1a 0x02
+      offset = POP()
+      SPUSH($FILE[offset..null].ascii)
+
+    0x03 .. flsasciisized
+      0x1a 0x03
+      length = POP()
+      offset = POP()
+      SPUSH($FILE[offset..offset+length-1].ascii)
+
+0x1c .. sli
+  0x1c
+  address = POP()
+  PUSH($WRAM[address])
+
+0x1d .. slf
+  0x1d
+  address = POP()
+  FPUSH($FWRAM[address])
+
+0x1e .. sls
+  0x1e
+  address = POP()
+  SPUSH($SWRAM[address])
+
+
+0x28 .. Output integer
+  0x28 subfunction/u8
+
+    0x00 .. osu <base>
+      0x28 0x00 base/u8
+      name = SPOP()
+      value = POP()
+      original_offset = POP()
+      OUTPUT(name, value as u64, base, original_offset)
+
+    0x01 .. osi <base>
+      0x28 0x01 base/u8
+      name = SPOP()
+      value = POP()
+      original_offset = POP()
+      OUTPUT(name, value as i64, base, original_offset)
+
+0x29 .. Output floating point value
+  0x29 subfunction/u8
+
+    0x00 .. osf
+      0x29 0x00
+      name = SPOP()
+      value = FPOP()
+      original_offset = POP()
+      OUTPUT(name, value, original_offset)
+
+0x2a .. Output string
+  0x2a subfunction/u8
+
+    0x00 .. oss
+      0x2a 0x00
+      name = SPOP()
+      value = SPOP()
+      original_offset = POP()
+      OUTPUT(name, value, original_offset)
+
+0x2b .. oh<level>
+  0x2b level/u8
+  title = SPOP()
+  display_header = OUTPUT_HEADER(level, title)
+  PUSH(display_header)
+
+0x2c .. ssi
+  0x2c
+  address = POP()
+  $WRAM[address] = POP()
+
+0x2d .. ssf
+  0x2d
+  address = POP()
+  $FWRAM[address] = FPOP()
+
+0x2e .. sss
+  0x2e
+  address = POP()
+  $SWRAM[address] = SPOP()
+
+
+0x80 .. iswap
+  0x80
+  x = POP()
+  y = POP()
+  PUSH(x)
+  PUSH(y)
+
+0x81 .. idup
+  0x81
+  x = POP()
+  PUSH(x)
+  PUSH(x)
+
+0x82 .. idrop
+  0x82
+  POP()
+
+0x83 .. ineg
+  0x83
+  x = POP()
+  PUSH(-x)
+
+0x84 .. iadd
+  0x84
+  x = POP()
+  y = POP()
+  PUSH(x + y)
+
+0x85 .. iand
+  0x85
+  x = POP()
+  y = POP()
+  PUSH(x & y)
+
+0xa0 .. fswap
+  0xa0
+  x = FPOP()
+  y = FPOP()
+  FPUSH(x)
+  FPUSH(y)
+
+0xa1 .. fdup
+  0xa1
+  x = FPOP()
+  FPUSH(x)
+  FPUSH(x)
+
+0xa2 .. fdrop
+  0xa2
+  FPOP()
+
+0xa3 .. fneg
+  0xa3
+  x = FPOP()
+  FPUSH(-x)
+
+0xa4 .. fadd
+  0xa3
+  x = FPOP()
+  y = FPOP()
+  FPUSH(x + y)
+
+0xc0 .. sswap
+  0xc0
+  x = SPOP()
+  y = SPOP()
+  SPUSH(x)
+  SPUSH(y)
+
+0xc1 .. sdup
+  0xc1
+  x = SPOP()
+  SPUSH(x)
+  SPUSH(x)
+
+0xc2 .. sdrop
+  0xc2
+  SPOP()
+
+0xc4 .. scat
+  0xc4
+  x = SPOP()
+  y = SPOP()
+  SPUSH(x . y)
+
+
+0xe0 .. jmp <target>
+  0xe0 target/i64
+  PC += target
+
+0xe1 .. jz <target>
+  0xe1 target/i64
+  if POP() == 0
+      PC += target
+  endif
+
+0xe2 .. jnz <target>
+  0xe2 target/i64
+  if POP() != 0
+      PC += target
+  endif
+
+0xe3 .. jnn <target>
+  0xe3 target/i64
+  if POP() as i64 >= 0
+      PC += target
+  endif

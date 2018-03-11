@@ -1,120 +1,17 @@
-use config::{self, ConfigFile};
+use config::ConfigFile;
 use display::{Color, Display};
 use file::File;
-use serde_json;
 use std;
-use std::ops::{Deref, DerefMut};
+use std::num::Wrapping;
 
 
-#[derive(Serialize, Deserialize)]
-#[serde(tag = "type")]
-enum StructDefinition {
-    Folder(StructFolder),
-    Value(StructValue),
+pub struct StructCode {
+    buffer: Vec<u8>,
 }
-
-enum StateDefinition {
-    Folder(StateFolder),
-    Value(StateValue),
-}
-
-#[derive(Serialize, Deserialize)]
-struct StructFolder {
-    name: String,
-    content: Vec<Box<StructDefinition>>,
-}
-
-struct StateFolder {
-    name: String,
-    content: Vec<Box<StateDefinition>>,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-struct StructValue {
-    name: String,
-    offset: StructValueOffset,
-    kind: StructValueKind,
-}
-
-struct StateValue {
-    value: Option<StateActualValue>,
-    struct_corr: StructValue,
-}
-
-enum StateActualValue {
-    Unsigned(u64),
-    Signed(i64),
-    String(String),
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-#[serde(tag = "type")]
-enum StructValueOffset {
-    Abs(StructValueOffsetAbs),
-    Loc(StructValueOffsetLoc),
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-struct StructValueOffsetAbs {
-    offset: u64,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-struct StructValueOffsetLoc {
-    offset: i64,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-#[serde(tag = "type")]
-enum StructValueKind {
-    Integer(StructValueKindInteger),
-    String(StructValueKindString),
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-struct StructValueKindInteger {
-    width: usize,
-    endianness: StructValueKindIntegerEndianness,
-    sign: StructValueKindIntegerSign,
-    base: usize,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-enum StructValueKindIntegerEndianness {
-    Little,
-    Big,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-enum StructValueKindIntegerSign {
-    Unsigned,
-    SignTwoCompl,
-    SignOneCompl,
-    SignBitValue,
-    SignOffset(u64),
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-struct StructValueKindString {
-    length: StructValueKindStringLength,
-    encoding: StructValueKindStringEncoding,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-#[serde(tag = "type")]
-enum StructValueKindStringLength {
-    Fixed { length: usize },
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-enum StructValueKindStringEncoding {
-    ASCII,
-}
-
 
 pub struct Struct {
-    root: StructFolder,
-    state: StateFolder,
+    name: String,
+    code: StructCode,
 }
 
 pub struct Structs {
@@ -126,13 +23,20 @@ impl Structs {
     pub fn load(cfg: &ConfigFile) -> Result<Self, String> {
         let mut structs = Vec::<Struct>::new();
 
-        for cs in cfg.get_structs() {
-            let folder = StructFolder::load(cs.path.as_ref())?;
-            let state = StateFolder::new(&folder);
+        for (name, cs) in cfg.get_structs().iter() {
+            let mut file = File::new(cs.path.clone())?;
+            let len = file.len()?;
+
+            let mut buffer = Vec::new();
+            buffer.resize(len as usize, 0);
+
+            file.read(0, &mut buffer)?;
 
             let s = Struct {
-                root: folder,
-                state: state,
+                name: name.clone(),
+                code: StructCode {
+                    buffer: buffer,
+                },
             };
 
             structs.push(s);
@@ -157,227 +61,426 @@ impl Structs {
 }
 
 
-impl StructFolder {
-    pub fn load(path: &str) -> Result<Self, String> {
-        let mut full_path = config::base_dir()?;
-        full_path.push(std::path::PathBuf::from(path));
-        let mut options = std::fs::OpenOptions::new();
-        let mut file = match options.read(true).open(&full_path) {
-            Ok(f)   => f,
-            Err(e)  => return Err(format!("Failed to load struct from {:?}: {}",
-                                          full_path, e))
-        };
-
-        match serde_json::from_reader(&mut file) {
-            Ok(s)   => Ok(s),
-            Err(e)  => Err(format!("Failed to load struct from {:?}: {}",
-                                   full_path, e))
-        }
-    }
-}
-
-
 impl Struct {
     pub fn get_name(&self) -> &str {
-        self.root.name.as_ref()
+        self.name.as_ref()
     }
 
     pub fn update(&mut self, file: &mut File, loc: u64,
-                  display: &mut Display, start_x: usize, mut start_y: usize)
+                  display: &mut Display, start_x: usize, start_y: usize)
         -> Result<(), String>
     {
-        self.state.update(file, loc)?;
-        self.state.print(display, start_x, &mut start_y, 0, true)?;
+        let height = display.h() as usize;
+        let mut y = start_y;
 
-        Ok(())
-    }
-}
+        let mut last_output_was_not_header = false;
 
+        let mut pc = 0;
+        let mut file_be = false;
 
-impl StateFolder {
-    pub fn new(s: &StructFolder) -> Self {
-        let mut content = Vec::<Box<StateDefinition>>::new();
-        for def in &s.content {
-            let element = match def.deref() {
-                &StructDefinition::Folder(ref sf) =>
-                    StateDefinition::Folder(StateFolder::new(sf)),
+        let mut stack = Vec::<u64>::new();
+        let mut sstack = Vec::<String>::new();
 
-                &StructDefinition::Value(ref sv) =>
-                    StateDefinition::Value(StateValue {
-                        value: None,
-                        struct_corr: sv.clone(),
-                    }),
-            };
-            content.push(Box::new(element));
-        }
+        let mut wram = Vec::<u64>::new();
 
-        StateFolder {
-            name: s.name.clone(),
-            content: content,
-        }
-    }
+        loop {
+            if pc >= self.code.buffer.len() {
+                break;
+            }
 
-    fn update(&mut self, file: &mut File, loc: u64) -> Result<(), String> {
-        for state in &mut self.content {
-            match state.deref_mut() {
-                &mut StateDefinition::Folder(ref mut sf) =>
-                    sf.update(file, loc)?,
+            let opcode = self.code.buffer[pc];
+            pc += 1;
 
-                &mut StateDefinition::Value(ref mut val) => {
-                    let corr = &val.struct_corr;
-                    let mut offset = match corr.offset {
-                        StructValueOffset::Abs(ref o)  => o.offset,
-                        StructValueOffset::Loc(ref o)  => {
-                            if o.offset < 0 {
-                                loc + (-o.offset as u64)
-                            } else {
-                                loc + ( o.offset as u64)
-                            }
-                        },
-                    };
+            match opcode {
+                0x00 => { // stop
+                    break
+                },
 
-                    match corr.kind {
-                        StructValueKind::Integer(ref i) => {
-                            if i.width > 8 {
-                                return Err(format!("Integer width may not 
-                                                    exceed 8"));
-                            }
+                0x01 => { // Switch endianness
+                    let mode = self.code.buffer[pc];
+                    pc += 1;
 
-                            let mut raw = 0u64;
-                            // OH GOD FIXME
-                            for bi in 0..i.width {
-                                let byte = file.read_u8(offset)? as u64;
-                                offset += 1;
-                                raw |= match i.endianness {
-                                    StructValueKindIntegerEndianness::Little =>
-                                        (byte as u64) << (bi * 8),
-
-                                    StructValueKindIntegerEndianness::Big =>
-                                        (byte as u64) <<
-                                            ((i.width - bi - 1) * 8),
-                                };
-                            }
-
-                            let msb_shift = i.width * 8 - 1;
-
-                            val.value = Some(match i.sign {
-                                StructValueKindIntegerSign::Unsigned =>
-                                    StateActualValue::Unsigned(raw),
-
-                                StructValueKindIntegerSign::SignTwoCompl => {
-                                    let pv = if raw >> msb_shift == 0 {
-                                        raw as i64
-                                    } else {
-                                        if msb_shift == 63 {
-                                            -((0xffffffffffffffffu64 -
-                                               raw) as i64) - 1
-                                        } else {
-                                            -(((1u64 << (msb_shift + 1)) -
-                                               raw) as i64)
-                                        }
-                                    };
-                                    StateActualValue::Signed(pv)
-                                },
-
-                                StructValueKindIntegerSign::SignOneCompl => {
-                                    let pv = if raw >> msb_shift == 0 {
-                                        raw as i64
-                                    } else {
-                                        if msb_shift == 63 {
-                                            -((0xffffffffffffffffu64 -
-                                               raw) as i64)
-                                        } else {
-                                            -(((1u64 << (msb_shift + 1)) -
-                                               raw) as i64) + 1
-                                        }
-                                    };
-                                    StateActualValue::Signed(pv)
-                                },
-
-                                StructValueKindIntegerSign::SignBitValue => {
-                                    let pv = if raw >> msb_shift == 0 {
-                                        raw as i64
-                                    } else {
-                                        -((raw & !(1u64 << msb_shift))
-                                          as i64)
-                                    };
-                                    StateActualValue::Signed(pv)
-                                },
-
-                                StructValueKindIntegerSign::SignOffset(c) => {
-                                    let pv = if raw >= c {
-                                        (raw - c) as i64
-                                    } else {
-                                        -((c - raw) as i64)
-                                    };
-                                    StateActualValue::Signed(pv)
-                                },
-                            });
+                    match mode {
+                        0x00 => { // f2le
+                            file_be = false;
                         },
 
-                        StructValueKind::String(ref s) => {
-                            let length = match s.length {
-                                StructValueKindStringLength::Fixed
-                                    { length } => {
-                                    length
-                                },
-                            };
-
-                            let mut result = String::new();
-                            match s.encoding {
-                                StructValueKindStringEncoding::ASCII => {
-                                    for _ in 0..length {
-                                        let chr = file.read_u8(offset)?;
-                                        offset += 1;
-                                        if chr > 0x7f {
-                                            return Err(format!(
-                                                "Non-ASCII character in \
-                                                 supposedly ASCII string \
-                                                 (field {})", corr.name));
-                                        }
-                                        result.push(chr as char);
-                                    }
-                                }
-                            }
-
-                            val.value = Some(StateActualValue::String(result));
+                        0x01 => { //f2be
+                            file_be = true;
                         },
+
+                        _ => {
+                            return Err(format!("Unknown opcode {:x} {:x}",
+                                               opcode, mode))
+                        }
                     }
                 },
-            };
+
+
+                0x10 => { // lic <constant>
+                    let c = self.load_constant_u64(pc);
+                    pc += 8;
+
+                    stack.push(c);
+                },
+
+                0x12 => { // lsc <constant>
+                    let len = self.load_constant_u64(pc);
+                    pc += 8;
+
+                    let (string, bytelen) =
+                        self.load_constant_utf8_string(pc, Some(len))?;
+                    pc += bytelen;
+
+                    sstack.push(string);
+                },
+
+                0x14 => { // lic $LOC
+                    stack.push(loc);
+                },
+
+                0x18 => { // Load integer from file
+                    let subfunc = self.code.buffer[pc];
+                    pc += 1;
+
+                    let offset = self.stack_pop(&mut stack)?;
+                    let (len, sign): (usize, bool) = match subfunc {
+                        0x00 => (8, false), // flu64
+                        0x01 => (8, false), // fli64 (same as flu64)
+                        0x02 => (4, false), // flu32
+                        0x03 => (4, true),  // fli32
+                        0x04 => (2, false), // flu16
+                        0x05 => (2, true),  // fli16
+                        0x06 => (1, false), // flu8
+                        0x07 => (1, true),  // fli8
+
+                        _ => {
+                            return Err(format!("Unknown opcode {:x} {:x}",
+                                               opcode, subfunc))
+                        }
+                    };
+
+                    let mut val = 0u64;
+                    for i in 0..len {
+                        let ofs = offset + i as u64;
+
+                        if file_be {
+                            val <<= 8;
+                            val |= file.read_u8(ofs)? as u64;
+                        } else {
+                            val |= (file.read_u8(ofs)? as u64) << (i * 8);
+                        }
+                    }
+
+                    if sign && ((val >> (len * 8 - 1)) & 1) != 0 {
+                        // Sign extension
+                        val |= std::u64::MAX - ((1u64 << (len * 8)) - 1);
+                    }
+
+                    stack.push(val);
+                },
+
+                0x1a => { // Load string from file
+                    let subfunc = self.code.buffer[pc];
+                    pc += 1;
+
+                    let (string, _) = match subfunc {
+                        0x00 => { // flsutf8null
+                            let offset = self.stack_pop(&mut stack)?;
+
+                            self.load_file_utf8_string(file, offset, None,
+                                                       true)?
+                        },
+
+                        0x01 => { // flsutf8sized
+                            let len = self.stack_pop(&mut stack)?;
+                            let offset = self.stack_pop(&mut stack)?;
+
+                            self.load_file_utf8_string(file, offset, Some(len),
+                                                       true)?
+                        },
+
+                        0x02 => { // flsasciinull
+                            let offset = self.stack_pop(&mut stack)?;
+
+                            self.load_file_utf8_string(file, offset, None,
+                                                       false)?
+                        },
+
+                        0x03 => { // flsasciisized
+                            let len = self.stack_pop(&mut stack)?;
+                            let offset = self.stack_pop(&mut stack)?;
+
+                            self.load_file_utf8_string(file, offset, Some(len),
+                                                       false)?
+                        },
+
+                        _ => {
+                            return Err(format!("Unknown opcode {:x} {:x}",
+                                               opcode, subfunc))
+                        }
+                    };
+
+                    sstack.push(string);
+                },
+
+                0x1c => { // sli
+                    let address = self.stack_pop(&mut stack)? as usize;
+                    stack.push(wram[address]);
+                },
+
+
+                0x28 => { // Output integer
+                    let subfunc = self.code.buffer[pc];
+                    pc += 1;
+
+                    let base = self.code.buffer[pc] as usize;
+                    pc += 1;
+
+                    let name = self.stack_pop(&mut sstack)?;
+                    let value = self.stack_pop(&mut stack)?;
+                    let _orig_offset = self.stack_pop(&mut stack)?;
+
+                    if y + 1 > height {
+                        break;
+                    }
+                    display.set_cursor_pos(start_x, y);
+                    display.clear_line();
+                    y += 1;
+
+                    let string = match subfunc {
+                        0x00 => self.format_int(value, false, base), // osu
+                        0x01 => self.format_int(value, true,  base), // osi
+
+                        _ => {
+                            return Err(format!("Unknown opcode {:x} {:x}",
+                                               opcode, subfunc))
+                        }
+                    };
+
+                    display.write(format!("{}: {}", name, string));
+
+                    last_output_was_not_header = true;
+                },
+
+                0x2a => { // Output string
+                    let subfunc = self.code.buffer[pc];
+                    pc += 1;
+
+                    let name = self.stack_pop(&mut sstack)?;
+                    let value = self.stack_pop(&mut sstack)?;
+                    let _orig_offset = self.stack_pop(&mut stack)?;
+
+                    if y + 1 > height {
+                        break;
+                    }
+                    display.set_cursor_pos(start_x, y);
+                    display.clear_line();
+                    y += 1;
+
+                    match subfunc {
+                        0x00 => display.write(format!("{}: {}", name, value)),
+
+                        _ => {
+                            return Err(format!("Unknown opcode {:x} {:x}",
+                                               opcode, subfunc))
+                        }
+                    }
+
+                    last_output_was_not_header = true;
+                },
+
+                0x2b => { // oh<level>
+                    let level = self.code.buffer[pc];
+                    pc += 1;
+
+                    let title = self.stack_pop(&mut sstack)?;
+
+                    if last_output_was_not_header {
+                        if y + 1 > height {
+                            break;
+                        }
+                        display.set_cursor_pos(start_x, y);
+                        display.clear_line();
+                        y += 1;
+                    }
+
+                    if y + 2 > height {
+                        break;
+                    }
+                    display.set_cursor_pos(start_x, y);
+                    display.clear_line();
+                    y += 1;
+                    display.set_cursor_pos(start_x, y);
+                    display.clear_line();
+                    y += 1;
+
+                    display.set_cursor_pos(start_x, y - 2);
+
+                    let color = if level == 0 {
+                        Color::StructH0
+                    } else if level == 1 {
+                        Color::StructH1
+                    } else if level == 2 {
+                        Color::StructH2
+                    } else {
+                        Color::StructH3P
+                    };
+                    display.color_on_ref(&color);
+                    display.write(title);
+                    display.color_off_ref(&color);
+
+                    last_output_was_not_header = false;
+
+                    // TODO (Current: always display)
+                    stack.push(1u64);
+                },
+
+                0x2c => { // ssi
+                    let address = self.stack_pop(&mut stack)? as usize;
+                    let value = self.stack_pop(&mut stack)?;
+
+                    if address >= wram.len() {
+                        wram.resize(address + 1, 0);
+                    }
+                    wram[address] = value;
+                },
+
+
+                0x80 => { // iswap
+                    let x = self.stack_pop(&mut stack)?;
+                    let y = self.stack_pop(&mut stack)?;
+                    stack.push(x);
+                    stack.push(y);
+                },
+
+                0x81 => { // idup
+                    let x = self.stack_pop(&mut stack)?;
+                    stack.push(x);
+                    stack.push(x);
+                },
+
+                0x82 => { // idrop
+                    self.stack_pop(&mut stack)?;
+                },
+
+                0x83 => { // ineg
+                    let x = self.stack_pop(&mut stack)?;
+                    stack.push((Wrapping(0u64) - Wrapping(x)).0);
+                },
+
+                0x84 => { // iadd
+                    let x = self.stack_pop(&mut stack)?;
+                    let y = self.stack_pop(&mut stack)?;
+                    stack.push((Wrapping(x) + Wrapping(y)).0);
+                },
+
+                0x85 => { // iand
+                    let x = self.stack_pop(&mut stack)?;
+                    let y = self.stack_pop(&mut stack)?;
+                    stack.push(x & y);
+                },
+
+
+                0xe0 => { // jmp <target>
+                    let c = self.load_constant_u64(pc);
+                    pc -= 1; // Go back before the instruction
+                    pc = (Wrapping(pc as u64) + Wrapping(c)).0 as usize;
+                },
+
+                0xe1 => { // jz <target>
+                    let c = self.load_constant_u64(pc);
+                    pc += 8;
+
+                    if self.stack_pop(&mut stack)? == 0 {
+                        pc -= 9; // Go back before the instruction
+
+                        pc = (Wrapping(pc as u64) + Wrapping(c)).0 as usize;
+                    }
+                },
+
+                0xe2 => { // jnz <target>
+                    let c = self.load_constant_u64(pc);
+                    pc += 8;
+
+                    if self.stack_pop(&mut stack)? != 0 {
+                        pc -= 9; // Go back before the instruction
+
+                        pc = (Wrapping(pc as u64) + Wrapping(c)).0 as usize;
+                    }
+                },
+
+                0xe3 => { // jnn <target>
+                    let c = self.load_constant_u64(pc);
+                    pc += 8;
+
+                    if self.stack_pop(&mut stack)? >> 63 == 0 {
+                        pc -= 9; // Go back before the instruction
+
+                        pc = (Wrapping(pc as u64) + Wrapping(c)).0 as usize;
+                    }
+                },
+
+
+                0xff => { // panic
+                    let mut string = String::from("Stack:");
+
+                    while let Some(v) = stack.pop() {
+                        string += format!(" {:#x}", v).as_ref();
+                    }
+
+                    return Err(string)
+                },
+
+
+                _ => {
+                    return Err(format!("Unkown opcode {:x}", opcode))
+                }
+            }
         }
 
         Ok(())
     }
 
-    fn format_int(&self, val: &StateActualValue, base: usize) -> String {
+    fn assert(&self, res: bool, errstr: String) -> Result<(), String> {
+        if res {
+            Ok(())
+        } else {
+            Err(errstr)
+        }
+    }
+
+    fn stack_pop<T>(&self, stack: &mut Vec<T>) -> Result<T, String> {
+        match stack.pop() {
+            Some(x) => Ok(x),
+            None    => Err(String::from("Stack ran out"))
+        }
+    }
+
+    fn format_int(&self, mut val: u64, signed: bool, base: usize) -> String {
         if base > 36 {
             panic!("Base must not exceed 36, but is {}", base);
         }
 
-        let (sign, mut uval) = match val {
-            &StateActualValue::Unsigned(ref u) => ("", *u),
-            &StateActualValue::Signed(ref s) =>
-                (if *s < 0 { "-" } else { "" },
-                 if *s >= 0 {
-                     *s as u64
-                 } else if *s == -0x8000000000000000i64 {
-                     0x8000000000000000u64
-                 } else {
-                     -*s as u64
-                 }),
-
-            &StateActualValue::String(_) =>
-                panic!("format_int() expects an integer"),
-        };
-        if uval == 0 {
+        if val == 0 {
             return String::from("0");
         }
 
+        let sign = if signed {
+            if val >> 63 != 0 {
+                val = std::u64::MAX - val + 1;
+                "-"
+            } else {
+                ""
+            }
+        } else {
+            ""
+        };
+
         let mut ret = String::new();
-        while uval > 0 {
-            let digit = uval % (base as u64);
-            uval /= base as u64;
+        while val > 0 {
+            let digit = val % (base as u64);
+            val /= base as u64;
 
             ret.insert(0, if digit < 10 {
                 (digit as u8 + '0' as u8) as char
@@ -399,74 +502,134 @@ impl StateFolder {
         return ret;
     }
 
-    fn print(&self, display: &mut Display, start_x: usize, start_y: &mut usize,
-             level: usize, first_child: bool)
-        -> Result<(), String>
+    fn load_constant_u64(&self, pc: usize) -> u64 {
+        let mut val = 0u64;
+        for i in 0..8 {
+            val |= (self.code.buffer[pc + i] as u64) << (i * 8);
+        }
+        return val;
+    }
+
+    fn load_constant_utf8_string(&self, pc: usize, len: Option<u64>)
+        -> Result<(String, usize), String>
     {
-        let height = display.h() as usize;
-
-        if !first_child {
-            *start_y += 1;
-        }
-
-        if *start_y + 2 > height {
-            return Ok(());
-        }
-        display.set_cursor_pos(start_x, *start_y);
-        display.clear_line();
-        *start_y += 2;
-
-        let color = if level == 0 {
-            Color::StructH0
-        } else if level == 1 {
-            Color::StructH1
-        } else if level == 2 {
-            Color::StructH2
-        } else {
-            Color::StructH3P
+        let mut string = String::new();
+        let mut rem = match len {
+            Some(x) => x as usize,
+            None    => std::usize::MAX,
         };
-        display.color_on_ref(&color);
-        display.write_static(self.name.as_ref());
-        display.color_off_ref(&color);
+        let mut i = 0;
 
-        let mut child_first_child = true;
-        for state in &self.content {
-            if *start_y + 1 > height {
-                return Ok(());
+        while rem > 0 {
+            let mut codepoint: u32;
+            let mut tail_length: usize;
+
+            let start = self.code.buffer[pc + i];
+            i += 1;
+
+            if start & 0x80 == 0x00 {
+                codepoint = start as u32;
+                tail_length = 0;
+            } else if start & 0xe0 == 0xc0 {
+                codepoint = ((start & 0x1f) as u32) << 6;
+                tail_length = 1;
+            } else if start & 0xf0 == 0xe0 {
+                codepoint = ((start & 0x0f) as u32) << 12;
+                tail_length = 2;
+            } else if start & 0xf8 == 0xf0 {
+                codepoint = ((start & 0x07) as u32) << 18;
+                tail_length = 3;
+            } else {
+                return Err(String::from("Invalid utf-8 string constant"));
             }
 
-            match state.deref() {
-                &StateDefinition::Folder(ref sf) =>
-                    sf.print(display, start_x, start_y,
-                             level + 1, child_first_child)?,
+            while tail_length > 0 {
+                let byte = self.code.buffer[pc + i];
+                self.assert(byte & 0xc0 == 0x80,
+                            String::from("Invalid utf-8 string constant"))?;
 
-                &StateDefinition::Value(ref val) => {
-                    display.set_cursor_pos(start_x, *start_y);
-                    display.clear_line();
-                    *start_y += 1;
-
-                    let disp = match &val.struct_corr.kind {
-                        &StructValueKind::Integer(ref i) =>
-                            self.format_int(val.value.as_ref().unwrap(),
-                                            i.base),
-
-                        &StructValueKind::String(_) =>
-                            match val.value.as_ref().unwrap() {
-                                &StateActualValue::String(ref s) => {
-                                    s.clone()
-                                },
-
-                                _ => panic!("strings must stay strings")
-                            }
-                    };
-                    display.write(format!("{}: {}",
-                                          val.struct_corr.name, disp));
-                },
+                tail_length -= 1;
+                codepoint |= ((byte & 0x3f) as u32) << (tail_length * 6);
+                i += 1;
             }
 
-            child_first_child = false;
+            if len.is_none() && codepoint == 0 {
+                break;
+            }
+
+            match std::char::from_u32(codepoint) {
+                Some(c) => string.push(c),
+                None    =>
+                    return Err(String::from("Invalid utf-8 string constant")),
+            };
+
+            rem -= 1;
         }
 
-        Ok(())
+        return Ok((string, i));
+    }
+
+    fn load_file_utf8_string(&self, file: &mut File, offset: u64,
+                             len: Option<u64>, utf8: bool)
+        -> Result<(String, usize), String>
+    {
+        let mut string = String::new();
+        let mut rem = match len {
+            Some(x) => x as usize,
+            None    => std::usize::MAX,
+        };
+        let mut i = 0;
+
+        while rem > 0 {
+            let mut codepoint: u32;
+            let mut tail_length: usize;
+
+            let start = file.read_u8(offset + i)?;
+            i += 1;
+
+            if start & 0x80 != 0x00 && !utf8 {
+                return Err(String::from("Invalid ASCII string"));
+            }
+
+            if start & 0x80 == 0x00 {
+                codepoint = start as u32;
+                tail_length = 0;
+            } else if start & 0xe0 == 0xc0 {
+                codepoint = ((start & 0x1f) as u32) << 6;
+                tail_length = 1;
+            } else if start & 0xf0 == 0xe0 {
+                codepoint = ((start & 0x0f) as u32) << 12;
+                tail_length = 2;
+            } else if start & 0xf8 == 0xf0 {
+                codepoint = ((start & 0x07) as u32) << 18;
+                tail_length = 3;
+            } else {
+                return Err(String::from("Invalid utf-8 string"));
+            }
+
+            while tail_length > 0 {
+                let byte = file.read_u8(offset + i)?;
+                self.assert(byte & 0xc0 == 0x80,
+                            String::from("Invalid utf-8 string"))?;
+
+                tail_length -= 1;
+                codepoint |= ((byte & 0x3f) as u32) << (tail_length * 6);
+                i += 1;
+            }
+
+            if len.is_none() && codepoint == 0 {
+                break;
+            }
+
+            match std::char::from_u32(codepoint) {
+                Some(c) => string.push(c),
+                None    =>
+                    return Err(String::from("Invalid utf-8 string")),
+            };
+
+            rem -= 1;
+        }
+
+        return Ok((string, i as usize));
     }
 }
