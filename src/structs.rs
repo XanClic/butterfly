@@ -2,6 +2,7 @@ use config::{self, ConfigFile};
 use display::{Color, Display};
 use file::File;
 use std;
+use std::collections::HashMap;
 use std::num::Wrapping;
 
 
@@ -9,13 +10,31 @@ pub struct StructCode {
     buffer: Vec<u8>,
 }
 
+struct Header {
+    folded: bool,
+}
+
+#[derive(Clone)]
+enum LineContent {
+    Nothing,
+    Header { path: Vec<String> },
+    Data { loc: u64, length: u64 },
+}
+
 pub struct Struct {
     name: String,
     code: StructCode,
+    headers: HashMap<Vec<String>, Header>,
+    lines: Vec<LineContent>,
 }
 
 pub struct Structs {
     list: Vec<Struct>,
+}
+
+pub struct MouseDownResult {
+    pub need_update: bool,
+    pub highlight: Option<(u64, u64)>,
 }
 
 
@@ -42,6 +61,8 @@ impl Structs {
                 code: StructCode {
                     buffer: buffer,
                 },
+                headers: HashMap::new(),
+                lines: Vec::new(),
             };
 
             structs.push(s);
@@ -72,11 +93,10 @@ impl Struct {
     }
 
     pub fn update(&mut self, file: &mut File, loc: u64,
-                  display: &mut Display, start_x: usize, start_y: usize)
+                  display: &mut Display, start_x: usize)
         -> Result<(), String>
     {
         let height = display.h() as usize;
-        let mut y = start_y;
 
         let mut last_output_was_not_header = false;
 
@@ -87,6 +107,10 @@ impl Struct {
         let mut sstack = Vec::<String>::new();
 
         let mut wram = Vec::<u64>::new();
+
+        let mut current_header_path = Vec::<String>::new();
+
+        self.lines.clear();
 
         loop {
             if pc >= self.code.buffer.len() {
@@ -244,14 +268,8 @@ impl Struct {
 
                     let name = self.stack_pop(&mut sstack)?;
                     let value = self.stack_pop(&mut stack)?;
-                    let _orig_offset = self.stack_pop(&mut stack)?;
-
-                    if y + 1 > height {
-                        break;
-                    }
-                    display.set_cursor_pos(start_x, y);
-                    display.clear_line();
-                    y += 1;
+                    let orig_length = self.stack_pop(&mut stack)?;
+                    let orig_offset = self.stack_pop(&mut stack)?;
 
                     let string = match subfunc {
                         0x00 => self.format_int(value, false, base), // osu
@@ -263,7 +281,15 @@ impl Struct {
                         }
                     };
 
-                    display.write(format!("{}: {}", name, string));
+                    if !self.output_line(display, start_x, height,
+                                         format!("{}: {}", name, string),
+                                         LineContent::Data {
+                                             loc: orig_offset,
+                                             length: orig_length,
+                                         })
+                    {
+                        break;
+                    }
 
                     last_output_was_not_header = true;
                 },
@@ -274,22 +300,22 @@ impl Struct {
 
                     let name = self.stack_pop(&mut sstack)?;
                     let value = self.stack_pop(&mut sstack)?;
-                    let _orig_offset = self.stack_pop(&mut stack)?;
+                    let orig_length = self.stack_pop(&mut stack)?;
+                    let orig_offset = self.stack_pop(&mut stack)?;
 
-                    if y + 1 > height {
-                        break;
+                    if subfunc != 0x00 {
+                        return Err(format!("Unknown opcode {:x} {:x}",
+                                           opcode, subfunc));
                     }
-                    display.set_cursor_pos(start_x, y);
-                    display.clear_line();
-                    y += 1;
 
-                    match subfunc {
-                        0x00 => display.write(format!("{}: {}", name, value)),
-
-                        _ => {
-                            return Err(format!("Unknown opcode {:x} {:x}",
-                                               opcode, subfunc))
-                        }
+                    if !self.output_line(display, start_x, height,
+                                         format!("{}: {}", name, value),
+                                         LineContent::Data {
+                                             loc: orig_offset,
+                                             length: orig_length,
+                                         })
+                    {
+                        break;
                     }
 
                     last_output_was_not_header = true;
@@ -301,26 +327,22 @@ impl Struct {
 
                     let title = self.stack_pop(&mut sstack)?;
 
+                    current_header_path.truncate(level as usize);
+                    current_header_path.push(title.clone());
+
+                    let folded = {
+                        let hdr = self.lookup_header(&current_header_path);
+                        hdr.folded
+                    };
+
                     if last_output_was_not_header {
-                        if y + 1 > height {
+                        if !self.output_line(display, start_x, height,
+                                             String::new(),
+                                             LineContent::Nothing)
+                        {
                             break;
                         }
-                        display.set_cursor_pos(start_x, y);
-                        display.clear_line();
-                        y += 1;
                     }
-
-                    if y + 2 > height {
-                        break;
-                    }
-                    display.set_cursor_pos(start_x, y);
-                    display.clear_line();
-                    y += 1;
-                    display.set_cursor_pos(start_x, y);
-                    display.clear_line();
-                    y += 1;
-
-                    display.set_cursor_pos(start_x, y - 2);
 
                     let color = if level == 0 {
                         Color::StructH0
@@ -332,13 +354,32 @@ impl Struct {
                         Color::StructH3P
                     };
                     display.color_on_ref(&color);
-                    display.write(title);
+                    if !self.output_line(display, start_x, height, title,
+                                         LineContent::Header {
+                                             path: current_header_path.clone(),
+                                         })
+                    {
+                        display.color_off_ref(&color);
+                        break;
+                    }
                     display.color_off_ref(&color);
+
+                    if !folded {
+                        if !self.output_line(display, start_x, height,
+                                             String::new(),
+                                             LineContent::Nothing)
+                        {
+                            break;
+                        }
+                    }
 
                     last_output_was_not_header = false;
 
-                    // TODO (Current: always display)
-                    stack.push(1u64);
+                    if folded {
+                        stack.push(0u64);
+                    } else {
+                        stack.push(1u64);
+                    }
                 },
 
                 0x2c => { // ssi
@@ -442,6 +483,11 @@ impl Struct {
                     return Err(format!("Unkown opcode {:x}", opcode))
                 }
             }
+        }
+
+        while self.output_line(display, start_x, height, String::new(),
+                               LineContent::Nothing)
+        {
         }
 
         Ok(())
@@ -636,5 +682,69 @@ impl Struct {
         }
 
         return Ok((string, i as usize));
+    }
+
+    fn output_line(&mut self, display: &mut Display, x: usize, y_limit: usize,
+                   string: String, line: LineContent)
+        -> bool
+    {
+        let y = self.lines.len();
+
+        if y + 1 > y_limit {
+            return false;
+        }
+
+        display.set_cursor_pos(x, y);
+        display.clear_line();
+        display.write(string);
+
+        self.lines.push(line);
+
+        return true;
+    }
+
+    fn lookup_header(&mut self, hdr_path: &Vec<String>) -> &Header {
+        self.headers.entry(hdr_path.clone()).or_insert(Header {
+            folded: false,
+        })
+    }
+
+    fn lookup_header_mut(&mut self, hdr_path: &Vec<String>) -> &mut Header {
+        self.headers.entry(hdr_path.clone()).or_insert(Header {
+            folded: false,
+        })
+    }
+
+    pub fn mouse_down(&mut self, line: usize)
+        -> Result<MouseDownResult, String>
+    {
+        if line >= self.lines.len() {
+            return Ok(MouseDownResult {
+                need_update: false,
+                highlight: None,
+            });
+        }
+
+        match self.lines[line].clone() {
+            LineContent::Nothing => Ok(MouseDownResult {
+                need_update: false,
+                highlight: None,
+            }),
+
+            LineContent::Header { path } => {
+                let hdr = self.lookup_header_mut(&path);
+                hdr.folded = !hdr.folded;
+
+                Ok(MouseDownResult {
+                    need_update: true,
+                    highlight: None,
+                })
+            },
+
+            LineContent::Data { loc, length } => Ok(MouseDownResult {
+                need_update: false,
+                highlight: Some((loc, length)),
+            }),
+        }
     }
 }

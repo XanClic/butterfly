@@ -25,6 +25,7 @@ pub struct Buffer {
     mode: Mode,
     loc: u64,
     old_loc: u64, // LOC before last update_cursor() call
+    highlight_end: Option<u64>,
 
     // TODO: Can this be done better?
     replacing_nibble: u8,
@@ -66,6 +67,7 @@ impl Buffer {
             mode: Mode::Read,
             loc: 0,
             old_loc: 0,
+            highlight_end: None,
 
             replacing_nibble: 0,
             replacing_old: 0,
@@ -144,7 +146,7 @@ impl Buffer {
         let a_s = self.structs.get_mut(a_s_i);
 
         if let Err(e) = a_s.update(&mut self.file, self.loc,
-                                   &mut self.display, start_x, 0)
+                                   &mut self.display, start_x)
         {
             // TODO: Don't just overwrite this
             self.status_info = Some((format!("struct: {}", e),
@@ -235,15 +237,45 @@ impl Buffer {
 
         // Hex data
         for i in 0..16 {
+            let file_offset = base + (i as u64);
+            let (in_highlight, first_highlight, last_highlight) =
+                if let Some(x) = self.highlight_end {
+                    (file_offset >= self.loc && file_offset < x,
+                     file_offset == self.loc,
+                     i == 15 || file_offset == x - 1)
+                } else {
+                    (false, false, false)
+                };
+
+            if in_highlight && !first_highlight {
+                self.display.color_on(Color::Highlight);
+            }
             if i == 4 || i == 12 {
                 self.display.write_static(" ");
             } else if i == 8 {
                 self.display.write_static("  ");
             }
+            if in_highlight && !first_highlight {
+                self.display.color_off(Color::Highlight);
+            }
 
-            if base + (i as u64) < end_offset {
+            if file_offset < end_offset {
                 let val = self.buffer[buffer_base + i];
-                self.display.write(format!("{:02x} ", val));
+
+                if in_highlight {
+                    self.display.color_on(Color::Highlight);
+                }
+                if in_highlight && last_highlight {
+                    self.display.write(format!("{:02x}", val));
+                } else {
+                    self.display.write(format!("{:02x} ", val));
+                }
+                if in_highlight {
+                    self.display.color_off(Color::Highlight);
+                }
+                if in_highlight && last_highlight {
+                    self.display.write_static(" ");
+                }
             } else {
                 self.display.write_static("   ");
             }
@@ -253,16 +285,28 @@ impl Buffer {
 
         // Character data
         for i in 0..16 {
-            let chr = if base + (i as u64) < end_offset {
+            let file_offset = base + (i as u64);
+            let in_highlight =
+                if let Some(x) = self.highlight_end {
+                    file_offset >= self.loc && file_offset < x
+                } else {
+                    false
+                };
+
+            let chr = if file_offset < end_offset {
                 Some(self.buffer[buffer_base + i])
             } else {
                 None
             };
 
+            if in_highlight {
+                self.display.color_on(Color::Highlight);
+            }
+
             // Only draw cursor here if the real cursor is actually in the hex
             // column (which it is not when entering a command)
             let active_char = active_line && self.command_line.is_none() &&
-                              base + (i as u64) == self.loc;
+                              file_offset == self.loc;
             if active_char {
                 self.display.color_on(Color::ActiveChar);
             }
@@ -285,6 +329,9 @@ impl Buffer {
 
             if active_char {
                 self.display.color_off(Color::ActiveChar);
+            }
+            if in_highlight {
+                self.display.color_off(Color::Highlight);
             }
         }
 
@@ -326,13 +373,42 @@ impl Buffer {
         }
     }
 
+    fn reset_term_cursor_pos(&mut self) -> Result<(), String> {
+        let x: usize;
+        let y: usize;
+
+        if let Some(ref cmd_line) = self.command_line {
+            x = cmd_line.len() + 1;
+            y = self.display.h() as usize - 1;
+        } else {
+            x = (Self::byte_to_x((self.loc % 16) as u8) + self.replacing_nibble)
+                as usize + 19;
+            y = ((self.loc - self.base_offset) / 16) as usize;
+        }
+        self.display.set_cursor_pos(x, y);
+        Ok(())
+    }
+
     pub fn update_cursor(&mut self) -> Result<(), String> {
         let loc = self.loc;
         let old_loc = self.old_loc;
 
+        let full_update =
+            if (loc != old_loc || self.command_line.is_some()) &&
+                self.highlight_end.is_some()
+            {
+                self.highlight_end = None;
+                true
+            } else {
+                false
+            };
+
         self.update_struct()?;
 
         if loc < self.base_offset {
+            if full_update {
+                self.update()?;
+            }
             return Ok(());
         }
 
@@ -344,19 +420,12 @@ impl Buffer {
 
         self.old_loc = loc;
 
-        let x: usize;
-        let y: usize;
-
-        if let Some(ref cmd_line) = self.command_line {
-            x = cmd_line.len() + 1;
-            y = self.display.h() as usize - 1;
+        self.reset_term_cursor_pos()?;
+        if full_update {
+            self.update()?;
         } else {
-            x = (Self::byte_to_x((loc % 16) as u8) + self.replacing_nibble)
-                as usize + 19;
-            y = ((loc - self.base_offset) / 16) as usize;
+            self.display.flush();
         }
-        self.display.set_cursor_pos(x, y);
-        self.display.flush();
         Ok(())
     }
 
@@ -428,7 +497,6 @@ impl Buffer {
         }
 
         self.update_status()?;
-        self.update_cursor()?;
         Ok(())
     }
 
@@ -444,7 +512,6 @@ impl Buffer {
         }
 
         self.update_status()?;
-        self.update_cursor()?;
         Ok(())
     }
 
@@ -461,7 +528,6 @@ impl Buffer {
         }
 
         self.update_status()?;
-        self.update_cursor()?;
         Ok(())
     }
 
@@ -478,7 +544,6 @@ impl Buffer {
         }
 
         self.update_status()?;
-        self.update_cursor()?;
         Ok(())
     }
 
@@ -592,7 +657,6 @@ impl Buffer {
         }
 
         self.update_status()?;
-        self.update_cursor()?;
         Ok(())
     }
 
@@ -601,7 +665,6 @@ impl Buffer {
         self.loc &= !0xf;
 
         self.update_status()?;
-        self.update_cursor()?;
         Ok(())
     }
 
@@ -867,13 +930,37 @@ impl Buffer {
         x -= 1;
         y -= 1;
 
-        // FIXME: Hard-coding these things is not too nice
-        let height = self.display.h();
-        if height < 2 || y >= self.display.h() - 2 {
+        if x < 19 {
             return Ok(true);
         }
 
-        if x < 19 || x > 89 {
+        if x > 89 {
+            if let Some(si) = self.active_struct {
+                let res = self.structs.get_mut(si).mouse_down(y as usize)?;
+                if let Some((loc, len)) = res.highlight {
+                    self.loc = loc;
+                    self.cursor_to_bounds(true)?;
+                    // Invoke update_cursor() before setting highlight_end, so
+                    // the highlight won't be cleared immediately on update()
+                    // (It's cleared in update_cursor() whenever the LOC moves)
+                    self.update_cursor()?;
+
+                    self.highlight_end = Some(loc + len);
+                    self.cursor_to_bounds(true)?;
+                    self.update()?;
+                } else if res.need_update {
+                    // Update required
+                    self.update_struct()?;
+                    self.reset_term_cursor_pos()?;
+                    self.display.flush();
+                }
+            }
+            return Ok(true);
+        }
+
+        // FIXME: Hard-coding these things is not too nice
+        let height = self.display.h();
+        if height < 2 || y >= self.display.h() - 2 {
             return Ok(true);
         }
 
@@ -887,7 +974,6 @@ impl Buffer {
             };
 
         self.loc = self.base_offset + y as u64 * 16 + byte as u64;
-        self.update_cursor()?;
         self.update_status()?;
 
         Ok(true)

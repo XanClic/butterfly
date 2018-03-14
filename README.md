@@ -53,10 +53,10 @@ TODO
 - [x] Structures: User should be able to define structures in JSON files – this
       is considered complete when I have a usable qcow2 definition
       (for this, I will need links (“this value is an offset for that value”))
-- [ ] Structure section folding
+- [x] Structure section folding
 - [ ] Do not update structure views that do not depend on the cursor position
       when moving the cursor
-- [ ] Structure highlighting: When you click on a value, it should be
+- [x] Structure highlighting: When you click on a value, it should be
       highlighted in the data stream
 - [ ] Be able to display the list of installed structs (this requires some way
       for commands to display a lengthy output, which would be quite nice to

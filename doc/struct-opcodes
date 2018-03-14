@@ -134,15 +134,17 @@
       0x28 0x00 base/u8
       name = SPOP()
       value = POP()
+      original_length = POP()
       original_offset = POP()
-      OUTPUT(name, value as u64, base, original_offset)
+      OUTPUT(name, value as u64, base, original_offset, original_length)
 
     0x01 .. osi <base>
       0x28 0x01 base/u8
       name = SPOP()
       value = POP()
+      original_length = POP()
       original_offset = POP()
-      OUTPUT(name, value as i64, base, original_offset)
+      OUTPUT(name, value as i64, base, original_offset, original_length)
 
 0x29 .. Output floating point value
   0x29 subfunction/u8
@@ -151,8 +153,9 @@
       0x29 0x00
       name = SPOP()
       value = FPOP()
+      original_length = POP()
       original_offset = POP()
-      OUTPUT(name, value, original_offset)
+      OUTPUT(name, value, original_offset, original_length)
 
 0x2a .. Output string
   0x2a subfunction/u8
@@ -161,8 +164,9 @@
       0x2a 0x00
       name = SPOP()
       value = SPOP()
+      original_length = POP()
       original_offset = POP()
-      OUTPUT(name, value, original_offset)
+      OUTPUT(name, value, original_offset, original_length)
 
 0x2b .. oh<level>
   0x2b level/u8

@@ -38,6 +38,7 @@ bitmask! {
         StructH1            = (1u64 <<  9),
         StructH2            = (1u64 << 10),
         StructH3P           = (1u64 << 11),
+        Highlight           = (1u64 << 12),
     }
 }
 
@@ -215,48 +216,69 @@ impl Display {
 
     fn update_color(&mut self) {
         // TODO: Make these customizable
-        let mut sgr_string = String::from("\x1b[0");
+
+        let mut bold = false;
+        let mut underline = false;
+        let mut swap = false;
+        let mut fg_color = 9;
+        let mut bg_color = 9;
 
         if self.mode.contains(Color::ActiveLine) {
-            // BG color 0
-            sgr_string.push_str(";40");
+            bg_color = 0; // usually black (default), but may differ
+        }
+        if self.mode.contains(Color::ActiveChar) {
+            swap = true;
         }
         if self.mode.contains(Color::ErrorInfo) {
-            // Bold, red
-            sgr_string.push_str(";1;31");
+            bold = true;
+            fg_color = 1; // red
         }
         if self.mode.contains(Color::AddressColumn) {
-            // Cyan
-            sgr_string.push_str(";36");
+            fg_color = 6; // cyan
         }
         if self.mode.contains(Color::StatusModeRead) {
-            // Bold, green
-            sgr_string.push_str(";1;32");
+            bold = true;
+            fg_color = 2; // green
         }
         if self.mode.contains(Color::StatusModeModify) {
-            // Bold, red
-            sgr_string.push_str(";1;31");
+            bold = true;
+            fg_color = 1; // red
         }
         if self.mode.contains(Color::StatusModeReplace) {
-            // Bold, underline, red
-            sgr_string.push_str(";1;4;31");
+            bold = true;
+            underline = true;
+            fg_color = 1; // red
         }
         if self.mode.contains(Color::StatusLoc) {
-            // Cyan
-            sgr_string.push_str(";36");
+            fg_color = 6; // cyan
         }
         if self.mode.contains(Color::StructH0) {
-            // Bold, blue
-            sgr_string.push_str(";1;34");
+            bold = true;
+            fg_color = 4; // blue
         }
         if self.mode.contains(Color::StructH1) {
-            // Blue
-            sgr_string.push_str(";34");
+            fg_color = 4; // blue
+        }
+        if self.mode.contains(Color::Highlight) {
+            bold = true;
+            underline = true;
         }
 
-        // Should be at the end
-        if self.mode.contains(Color::ActiveChar) {
-            // Swap FG and BG
+        let mut sgr_string = String::from("\x1b[0");
+        if bold && !swap {
+            // swap can do funny things with bold, so let's leave that out
+            sgr_string.push_str(";1");
+        }
+        if underline {
+            sgr_string.push_str(";4");
+        }
+        if fg_color != 9 {
+            sgr_string.push_str(&format!(";{}", fg_color + 30));
+        }
+        if bg_color != 9 {
+            sgr_string.push_str(&format!(";{}", bg_color + 40));
+        }
+        if swap {
             sgr_string.push_str(";7");
         }
         sgr_string.push('m');
