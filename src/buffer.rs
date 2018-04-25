@@ -486,37 +486,60 @@ impl Buffer {
     }
 
     fn do_cursor_up(&mut self) -> Result<(), String> {
-        self.replacing_nibble = 0;
+        let mut need_update = false;
+
+        if self.replacing_nibble != 0 {
+            self.replacing_nibble = 0;
+            need_update = true;
+        }
 
         if self.loc >= 16 {
             if self.loc < self.base_offset + 16 {
                 self.base_offset -= 16;
-                self.update()?;
+                need_update = true;
             }
             self.loc -= 16;
         }
 
-        self.update_status()?;
+        if need_update {
+            self.update()?;
+        } else {
+            self.update_status()?;
+        }
         Ok(())
     }
 
     fn do_cursor_down(&mut self) -> Result<(), String> {
-        self.replacing_nibble = 0;
+        let mut need_update = false;
+
+        if self.replacing_nibble != 0 {
+            self.replacing_nibble = 0;
+            need_update = true;
+        }
 
         if self.loc + 16 < self.file.len()? {
             if self.loc + 16 >= self.end_offset()? {
                 self.base_offset += 16;
-                self.update()?;
+                need_update = true;
             }
             self.loc += 16;
         }
 
-        self.update_status()?;
+        if need_update {
+            self.update()?;
+        } else {
+            self.update_status()?;
+        }
         Ok(())
     }
 
     fn do_cursor_right(&mut self) -> Result<(), String> {
-        self.replacing_nibble = 0;
+        let mut need_update = false;
+
+        if self.replacing_nibble != 0 {
+            self.replacing_nibble = 0;
+            need_update = true;
+        }
 
         if self.loc + 1 < self.file.len()? {
             if self.loc % 16 == 15 {
@@ -527,12 +550,21 @@ impl Buffer {
             }
         }
 
-        self.update_status()?;
+        if need_update {
+            self.update()?;
+        } else {
+            self.update_status()?;
+        }
         Ok(())
     }
 
     fn do_cursor_left(&mut self) -> Result<(), String> {
-        self.replacing_nibble = 0;
+        let mut need_update = false;
+
+        if self.replacing_nibble != 0 {
+            self.replacing_nibble = 0;
+            need_update = true;
+        }
 
         if self.loc > 0 {
             if self.loc % 16 == 0 {
@@ -543,7 +575,11 @@ impl Buffer {
             }
         }
 
-        self.update_status()?;
+        if need_update {
+            self.update()?;
+        } else {
+            self.update_status()?;
+        }
         Ok(())
     }
 
@@ -644,8 +680,13 @@ impl Buffer {
     }
 
     fn do_key_end(&mut self) -> Result<(), String> {
+        let mut need_update = false;
         let lof = self.file.len()?;
-        self.replacing_nibble = 0;
+
+        if self.replacing_nibble != 0 {
+            self.replacing_nibble = 0;
+            need_update = true;
+        }
 
         self.loc = (self.loc & !0xf) + 0xf;
         if self.loc >= lof {
@@ -656,15 +697,29 @@ impl Buffer {
             }
         }
 
-        self.update_status()?;
+        if need_update {
+            self.update()?;
+        } else {
+            self.update_status()?;
+        }
         Ok(())
     }
 
     fn do_key_home(&mut self) -> Result<(), String> {
-        self.replacing_nibble = 0;
+        let mut need_update = false;
+
+        if self.replacing_nibble != 0 {
+            self.replacing_nibble = 0;
+            need_update = true;
+        }
+
         self.loc &= !0xf;
 
-        self.update_status()?;
+        if need_update {
+            self.update()?;
+        } else {
+            self.update_status()?;
+        }
         Ok(())
     }
 
