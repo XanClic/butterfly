@@ -725,9 +725,9 @@ impl Buffer {
                 let val = if input_asc >= '0' as u8 && input_asc <= '9' as u8 {
                     input_asc - '0' as u8
                 } else if input_asc >= 'a' as u8 && input_asc <= 'f' as u8 {
-                    input_asc - 'a' as u8
+                    input_asc - 'a' as u8 + 10
                 } else {
-                    input_asc - 'A' as u8
+                    input_asc - 'A' as u8 + 10
                 };
 
                 let buf_offset = (self.loc - self.base_offset) as usize;
