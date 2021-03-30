@@ -95,7 +95,10 @@ impl Buffer {
     }
 
     pub fn restore_display(&mut self) {
-        if let Err(e) = self.display.restore() {
+        let restore_res = self.display.restore();
+        self.display.clear();
+
+        if let Err(e) = restore_res {
             eprintln!("Failed to restore display: {}", e);
         }
     }
